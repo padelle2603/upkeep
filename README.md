@@ -5,8 +5,8 @@ GTK3 graphical interface and a command-line tool. Designed for x86-64
 AppImages (filterable via checkbox) and arm64.
 
 > Upkeep was previously known as "AppImage Updater". It is an independent
-> implementation inspired by the general concept popularised by Shelly and
-> CachyOS and by a personal update script. See [NOTICE](NOTICE).
+> implementation inspired by the general concept popularised by Shelly
+> and by a personal update script. See [NOTICE](NOTICE).
 
 ## Requirements
 
