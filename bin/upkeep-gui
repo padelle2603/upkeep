@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 padelle2603
+# SPDX-License-Identifier: GPL-3.0-or-later
+import os
+import sys
+
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(BASE, "src"))
+
+from upkeep.gui.main_window import run
+
+if __name__ == "__main__":
+    run()

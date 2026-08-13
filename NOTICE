@@ -1,0 +1,32 @@
+Upkeep
+Copyright (C) 2026  padelle2603
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+--------------------------------------------------------------------------------
+
+Upkeep (previously "AppImage Updater") was inspired by the general concept
+of keeping AppImage applications up to date from their GitHub releases,
+as popularised by projects such as Shelly and CachyOS, and by a personal
+update script ("update_apps.sh").
+
+This project is an independent implementation written from scratch. If any
+part of it is considered a derivative work of another GPL-licensed project,
+this notice serves as the attribution required by the GNU GPL, and the
+whole project is licensed under GPL-3.0-or-later.
+
+"AppImage" is a trademark of its respective owner. This project is not
+affiliated with, endorsed by, or sponsored by the AppImage project or any
+of the projects mentioned above. The "AppImage Updater" brand was renamed
+to "Upkeep" as of this release.

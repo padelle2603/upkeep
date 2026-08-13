@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>Upkeep</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background: rounded square with indigo -> cyan gradient -->
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bg)"/>
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="none" stroke="#312e81" stroke-opacity="0.35" stroke-width="4"/>
+
+  <!-- Update ring (circular arrows, gap on the right) -->
+  <path d="M 385.9 325 A 150 150 0 1 1 331 120"
+        fill="none" stroke="#ffffff" stroke-width="22" stroke-linecap="round"/>
+
+  <!-- Ring arrowhead -->
+  <polygon points="331,120 297.8,113.5 308.8,94.5" fill="#ffffff"/>
+
+  <!-- Download arrows into the tray (center) -->
+  <rect x="243" y="175" width="26" height="105" rx="13" fill="#ffffff"/>
+  <polygon points="206,252 256,312 306,252" fill="#ffffff"/>
+  <path d="M 196 356 H 316" stroke="#ffffff" stroke-width="24" stroke-linecap="round"/>
+</svg>
