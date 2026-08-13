@@ -74,7 +74,7 @@ Exit codes: `0` ok, `1` errors, `2` updates applied.
 
 ```bash
 # configure an app from the console
-upkeep add --name waywallen --repo waywallen/waywallen --arch x86_64
+upkeep add --name <appimage-name> --repo <user>/<repo> --arch x86_64
 
 # sync and update everything (quick command)
 upkeep sync
