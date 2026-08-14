@@ -104,9 +104,3 @@ CachyOS, or GitHub.
 
 GNU General Public License v3.0 or later (GPL-3.0-or-later). See
 [LICENSE](LICENSE) and [NOTICE](NOTICE).
-
-## Test
-
-```bash
-PYTHONPATH=src python3 -m unittest discover tests
-```
