@@ -9,6 +9,7 @@ import sys
 from . import config
 from . import updater
 from . import github
+from . import term
 
 STATE_ICON = {
     "outdated": "\U0001f4e6",
@@ -18,17 +19,6 @@ STATE_ICON = {
     "skipped": "\u23ed\ufe0f",
     "missing": "\u26a0\ufe0f",
 }
-
-
-def print_table(rows, headers, aligns=None):
-    widths = []
-    for c in range(len(headers)):
-        widths.append(max(len(headers[c]), *(len(str(r[c])) for r in rows)))
-    line = " | ".join(h.ljust(widths[i]) for i, h in enumerate(headers))
-    print(line)
-    print("-+-".join("-" * w for w in widths))
-    for r in rows:
-        print(" | ".join(str(r[i]).ljust(widths[i]) for i in range(len(headers))))
 
 
 def cmd_list(cfg, args):
@@ -41,8 +31,9 @@ def cmd_list(cfg, args):
         local = config.read_local_version(a, cfg["settings"]) or "-"
         target = config.app_target_path(a)
         exists = __import__("os").path.exists(target)
-        rows.append((a["name"], a["repo"], a.get("arch") or "x86_64", local, target, "yes" if exists else "no"))
-    print_table(rows, ["Name", "Repo", "Arch", "Local", "Path", "Installed"])
+        installed = term.green("yes") if exists else term.red("no")
+        rows.append((a["name"], a["repo"], a.get("arch") or "x86_64", local, target, installed))
+    term.print_table(rows, ["Name", "Repo", "Arch", "Local", "Path", "Installed"])
     return 0
 
 
@@ -59,17 +50,24 @@ def cmd_check(cfg, args):
             continue
         r = updater.check_app(a, cfg["settings"])
         remote = (r.info or {}).get("tag") if r.info else None
+        name = term.state_color(r.state)(STATE_ICON[r.state] + " " + a["name"])
         if r.state == "error":
             errors += 1
-            rows.append((STATE_ICON["error"] + " " + a["name"], a["repo"], r.message or "error"))
+            rows.append((name, a["repo"], term.red(r.message or "error")))
         else:
             if r.state in ("outdated", "missing"):
                 outdated += 1
-            rows.append((STATE_ICON[r.state] + " " + a["name"], r.version or "-", remote or "-", r.message))
-    print_table([r for r in rows if len(r) == 4], ["App", "Local", "Remote", "Status"])
+            status = term.state_color(r.state)(r.message)
+            rows.append((name, r.version or "-", remote or "-", status))
+    term.print_table([r for r in rows if len(r) == 4], ["App", "Local", "Remote", "Status"])
     if errors:
-        print_table([r for r in rows if len(r) == 3], ["App", "Repo", "Error"])
-    print(f"\n{len(rows)} apps checked: {outdated} to fix, {errors} errors.")
+        term.print_table([r for r in rows if len(r) == 3], ["App", "Repo", "Error"])
+    summary = f"{len(rows)} apps checked"
+    if outdated:
+        summary += f", {term.yellow(str(outdated) + ' to fix')}"
+    if errors:
+        summary += f", {term.red(str(errors) + ' errors')}"
+    print("\n" + summary + ".")
     if errors:
         return 1
     return 2 if outdated else 0
@@ -98,19 +96,49 @@ def cmd_update(cfg, args, skip_confirm=False):
         return 0
     result = 0
     applied = 0
+    uptodate = 0
+    errors = 0
+    had_auto = False
+    bar = term.Progress()
     for a in targets:
         confirm = None if (skip_confirm or a.get("auto_update")) else _confirm
-        r = updater.update_app(a, cfg["settings"], confirm_fn=confirm)
+        is_auto = confirm is None
+
+        def _progress(done, total, label=a["name"]):
+            bar.update(done, total, label=label)
+
+        r = updater.update_app(a, cfg["settings"], confirm_fn=confirm, progress_cb=_progress)
+        if is_auto:
+            had_auto = True
+            if r.state == "updated":
+                applied += 1
+            elif r.state == "uptodate":
+                uptodate += 1
+            elif r.state == "error":
+                errors += 1
+                result = 1
+                print(f"{term.red(STATE_ICON['error'])} {term.bold(a['name'])}: {r.message}", file=sys.stderr)
+            elif r.state == "skipped":
+                pass
+            continue
         if r.state == "updated":
             applied += 1
-            print(f"{STATE_ICON['updated']} {a['name']} -> {r.version}")
+            print(f"{term.green(STATE_ICON['updated'])} {term.bold(a['name'])} -> {term.green(r.version)}")
         elif r.state == "uptodate":
-            print(f"{STATE_ICON['uptodate']} {a['name']}: up to date ({r.version})")
+            print(f"{term.green(STATE_ICON['uptodate'])} {term.bold(a['name'])}: up to date ({r.version})")
         elif r.state == "skipped":
-            print(f"{STATE_ICON['skipped']} {a['name']}: skipped")
+            print(f"{term.yellow(STATE_ICON['skipped'])} {term.bold(a['name'])}: skipped")
         elif r.state == "error":
             result = 1
-            print(f"{STATE_ICON['error']} {a['name']}: {r.message}", file=sys.stderr)
+            print(f"{term.red(STATE_ICON['error'])} {term.bold(a['name'])}: {r.message}", file=sys.stderr)
+    if had_auto:
+        bar.finish()
+        parts = [term.green(str(applied) + " aggiornate")]
+        if uptodate:
+            parts.append(term.yellow(str(uptodate) + " già aggiornate"))
+        if errors:
+            parts.append(term.red(str(errors) + " errori"))
+        print("\n" + ", ".join(parts) + ".")
     if applied:
         return 2
     return result
@@ -142,11 +170,11 @@ def cmd_add(cfg, args):
         if a["name"] == name:
             cfg["apps"][i] = app
             config.save_config(cfg)
-            print(f"Updated app '{name}'.")
+            print(term.green("Updated app") + f" '{term.bold(name)}'.")
             return 0
     cfg["apps"].append(app)
     config.save_config(cfg)
-    print(f"Added app '{name}' ({args.repo}).")
+    print(term.green("Added app") + f" '{term.bold(name)}' ({args.repo}).")
     return 0
 
 
@@ -155,12 +183,12 @@ def cmd_remove(cfg, args):
     found = [a for a in cfg["apps"] if a["name"] == args.name]
     cfg["apps"] = [a for a in cfg["apps"] if a["name"] != args.name]
     if len(cfg["apps"]) == before:
-        print(f"App '{args.name}' not found.")
+        print(term.red(f"App '{args.name}' not found."))
         return 1
     for a in found:
         updater.remove_desktop_entry(a)
     config.save_config(cfg)
-    print(f"Removed app '{args.name}'.")
+    print(term.green("Removed app") + f" '{term.bold(args.name)}'.")
     return 0
 
 
@@ -169,22 +197,26 @@ def cmd_show(cfg, args):
         if a["name"] == args.name:
             local = config.read_local_version(a, cfg["settings"]) or "-"
             target = config.app_target_path(a)
-            print(f"Name:        {a['name']}")
-            print(f"Repo:        {a['repo']}")
-            print(f"Arch:        {a.get('arch')}")
-            print(f"Filter:      {a.get('asset_filter') or '-'}")
-            print(f"Install dir: {a.get('install_dir') or '(default)'}")
-            print(f"Custom path: {a.get('custom_path') or '-'}")
-            print(f"Path:        {target}")
-            print(f"Version:     {local}")
-            print(f"Auto:        {'yes' if a.get('auto_update') else 'no'}")
+
+            def kv(label, value, color=term.cyan):
+                return f"{term.bold(label):<14}{color(value)}"
+
+            print(kv("Name:", a["name"], term.bold))
+            print(kv("Repo:", a["repo"], term.bold))
+            print(kv("Arch:", a.get("arch")))
+            print(kv("Filter:", a.get("asset_filter") or "-"))
+            print(kv("Install dir:", a.get("install_dir") or "(default)"))
+            print(kv("Custom path:", a.get("custom_path") or "-"))
+            print(kv("Path:", target))
+            print(kv("Version:", local))
+            print(kv("Auto:", "yes" if a.get("auto_update") else "no"))
             try:
                 info = updater.latest_info(a)
-                print(f"Latest:      {info['tag']} ({info['asset_name']})")
+                print(kv("Latest:", f"{info['tag']} ({info['asset_name']})"))
             except github.GitHubError as e:
-                print(f"Latest:      error -> {e}")
+                print(kv("Latest:", f"error -> {e}", term.red))
             return 0
-    print(f"App '{args.name}' not found.")
+    print(term.red(f"App '{args.name}' not found."))
     return 1
 
 
