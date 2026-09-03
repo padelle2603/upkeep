@@ -57,15 +57,20 @@ if [ -f "${ICON_SRC}" ]; then
     cp "${ICON_SRC}" "${ICONDIR}/scalable/apps/upkeep.svg"
     if command -v rsvg-convert >/dev/null 2>&1; then
         RENDER="rsvg-convert"
-    else
+    elif command -v convert >/dev/null 2>&1; then
         RENDER="convert"
+    else
+        RENDER=""
+        echo "Warning: neither rsvg-convert nor ImageMagick 'convert' found; installing SVG icon only."
     fi
     for size in 48 128 256 512; do
         mkdir -p "${ICONDIR}/${size}x${size}/apps"
         if [ "${RENDER}" = "rsvg-convert" ]; then
-            rsvg-convert -w "${size}" -h "${size}" -o "${ICONDIR}/${size}x${size}/apps/upkeep.png" "${ICON_SRC}"
-        else
-            convert -background none "${ICON_SRC}" -resize "${size}x${size}" "${ICONDIR}/${size}x${size}/apps/upkeep.png"
+            rsvg-convert -w "${size}" -h "${size}" -o "${ICONDIR}/${size}x${size}/apps/upkeep.png" "${ICON_SRC}" \
+                || echo "Warning: failed to render ${size}x${size} icon."
+        elif [ "${RENDER}" = "convert" ]; then
+            convert -background none "${ICON_SRC}" -resize "${size}x${size}" "${ICONDIR}/${size}x${size}/apps/upkeep.png" \
+                || echo "Warning: failed to render ${size}x${size} icon."
         fi
     done
     if command -v gtk-update-icon-cache >/dev/null 2>&1; then

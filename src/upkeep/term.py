@@ -154,31 +154,54 @@ def _term_width():
         return 120
 
 
-def progress(done, total, label=""):
-    if not USE_COLOR:
+def _stderr_tty():
+    try:
+        return hasattr(sys.stderr, "isatty") and sys.stderr.isatty()
+    except Exception:
+        return False
+
+
+_status_len = 0
+
+
+def show_status(msg):
+    """Show a one-line transient status on stderr.
+
+    TTY: in-place ``\\r`` update (no newline). Non-TTY: print line once.
+    """
+    global _status_len
+    if not msg:
         return
-    total = total or 0
-    width = 30
-    if total > 0:
-        frac = min(done / total, 1.0)
+    msg = str(msg)
+    if _stderr_tty():
+        pad = max(0, _status_len - len(msg))
+        sys.stderr.write("\r" + msg + " " * pad)
+        sys.stderr.flush()
+        _status_len = len(msg)
     else:
-        frac = None
-    filled = int(frac * width) if frac is not None else 0
-    bar = "█" * filled + "─" * (width - filled)
-    if frac is not None:
-        pct = f"{frac * 100:5.1f}%"
-    else:
-        pct = f"{_human(done):>7}"
-    line = f"\r{label} [{bar}] {pct}"
-    sys.stdout.write(line)
-    sys.stdout.flush()
+        sys.stderr.write(msg + "\n")
+        sys.stderr.flush()
+
+
+def clear_status():
+    """Clear the transient status line (TTY only)."""
+    global _status_len
+    if _stderr_tty() and _status_len:
+        try:
+            sys.stderr.write("\r" + " " * _status_len + "\r")
+            sys.stderr.flush()
+        except Exception:
+            pass
+    _status_len = 0
+
+
+def progress(done, total, label=""):
+    bar = Progress()
+    bar.set(done, total, label=label)
 
 
 def progress_end(label=""):
-    if not USE_COLOR:
-        return
-    sys.stdout.write("\r" + " " * (_term_width() - 1) + "\r")
-    sys.stdout.flush()
+    clear_status()
 
 
 def _human(num):
@@ -190,10 +213,12 @@ def _human(num):
 
 
 class Progress:
-    """Cumulative progress bar across multiple downloads.
+    """Per-file progress bar (single download at a time).
 
-    Accumulates the bytes transferred (and the known content-length totals)
-    into a single in-place bar. No-op when colors/TTY are unavailable.
+    Expected callback semantics: ``set(done_cumulative, total_or_0)``,
+    matching ``updater.download`` which reports cumulative bytes and the
+    ``Content-Length`` total (0 when unknown). Draws in-place on stderr
+    when a TTY is available, no-op otherwise.
     """
 
     def __init__(self, width=30):
@@ -203,35 +228,49 @@ class Progress:
         self.label = ""
         self._started = False
 
-    def update(self, delta, chunk_total=None, label=""):
-        if not USE_COLOR:
-            return
-        self.done += delta
-        if chunk_total:
-            self.total += chunk_total
+    def set(self, done, total=None, label=""):
+        self.done = max(0, done or 0)
+        if total is not None:
+            self.total = max(0, total or 0)
         if label:
             self.label = label
         self._draw()
 
+    def update(self, done, total=None, label=""):
+        """Backwards-compatible alias for :meth:`set`."""
+        self.set(done, total, label=label)
+
     def _draw(self):
-        if not USE_COLOR:
+        global _status_len
+        if not _stderr_tty():
             return
         width = self.width
         if self.total > 0:
             frac = min(self.done / self.total, 1.0)
             filled = int(frac * width)
             pct = f"{frac * 100:5.1f}%"
+            size = f"{_human(self.done)}/{_human(self.total)}"
         else:
-            filled = int((self.done % (width + 1)) * (width + 1) / (width + 1))
+            filled = 0
             pct = f"{_human(self.done):>7}"
+            size = f"{_human(self.done)} downloaded"
         bar = "█" * filled + "─" * (width - filled)
-        line = f"\r{self.label} [{bar}] {pct}"
-        sys.stdout.write(line)
-        sys.stdout.flush()
+        prefix = f"{self.label} " if self.label else ""
+        line = f"\r{prefix}[{bar}] {pct}  {size}"
+        # Clear leftover chars from a longer previous line.
+        pad = max(0, _status_len - len(line) + 1)
+        sys.stderr.write(line + " " * pad)
+        sys.stderr.flush()
+        _status_len = len(line)
         self._started = True
 
     def finish(self):
-        if self._started and USE_COLOR:
-            sys.stdout.write("\r" + " " * (_term_width() - 1) + "\r")
-            sys.stdout.flush()
-            self._started = False
+        global _status_len
+        if self._started and _stderr_tty():
+            try:
+                sys.stderr.write("\r" + " " * _status_len + "\r")
+                sys.stderr.flush()
+            except Exception:
+                pass
+        _status_len = 0
+        self._started = False

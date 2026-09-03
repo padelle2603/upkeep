@@ -22,7 +22,7 @@ rm -f "${APPDIR}/upkeep.desktop"
 while IFS= read -r f; do
     rm -f "${f}"
     echo "  removed ${f}"
-done < <(grep -l "Upkeep" "${APPDIR}"/*.desktop 2>/dev/null || true)
+done < <(grep -l "managed by Upkeep" "${APPDIR}"/*.desktop 2>/dev/null || true)
 
 rm -rf "${ICONDIR}/scalable/apps/upkeep.svg"
 for size in 48 128 256 512; do

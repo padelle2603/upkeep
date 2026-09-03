@@ -42,23 +42,30 @@ def cmd_check(cfg, args):
     if not apps:
         print("No apps configured. Use 'add' or the GUI.")
         return 0
+    enabled = [a for a in apps if a.get("enabled", True)]
+    if not enabled:
+        print("No apps to check.")
+        return 0
     rows = []
     errors = 0
     outdated = 0
-    for a in apps:
-        if not a.get("enabled", True):
-            continue
-        r = updater.check_app(a, cfg["settings"])
-        remote = (r.info or {}).get("tag") if r.info else None
-        name = term.state_color(r.state)(STATE_ICON[r.state] + " " + a["name"])
-        if r.state == "error":
-            errors += 1
-            rows.append((name, a["repo"], term.red(r.message or "error")))
-        else:
-            if r.state in ("outdated", "missing"):
-                outdated += 1
-            status = term.state_color(r.state)(r.message)
-            rows.append((name, r.version or "-", remote or "-", status))
+    total = len(enabled)
+    try:
+        for i, a in enumerate(enabled, 1):
+            term.show_status(f"Checking for updates... [{i}/{total}] {a['name']}")
+            r = updater.check_app(a, cfg["settings"])
+            remote = (r.info or {}).get("tag") if r.info else None
+            name = term.state_color(r.state)(STATE_ICON[r.state] + " " + a["name"])
+            if r.state == "error":
+                errors += 1
+                rows.append((name, a["repo"], term.red(r.message or "error")))
+            else:
+                if r.state in ("outdated", "missing"):
+                    outdated += 1
+                status = term.state_color(r.state)(r.message)
+                rows.append((name, r.version or "-", remote or "-", status))
+    finally:
+        term.clear_status()
     term.print_table([r for r in rows if len(r) == 4], ["App", "Local", "Remote", "Status"])
     if errors:
         term.print_table([r for r in rows if len(r) == 3], ["App", "Repo", "Error"])
@@ -74,6 +81,7 @@ def cmd_check(cfg, args):
 
 
 def _confirm(app, info, missing=False):
+    term.clear_status()
     verb = "Reinstall" if missing else "Update"
     print(f"\n\U0001f680 {verb} {app['name']} to version {info['tag']}? [y/N]: ", end="", flush=True)
     ans = input().strip().lower()
@@ -99,45 +107,60 @@ def cmd_update(cfg, args, skip_confirm=False):
     uptodate = 0
     errors = 0
     had_auto = False
-    bar = term.Progress()
-    for a in targets:
-        confirm = None if (skip_confirm or a.get("auto_update")) else _confirm
-        is_auto = confirm is None
+    total = len(targets)
+    try:
+        for idx, a in enumerate(targets, 1):
+            prefix = f"[{idx}/{total}]"
+            confirm = None if (skip_confirm or a.get("auto_update")) else _confirm
+            is_auto = confirm is None
 
-        def _progress(done, total, label=a["name"]):
-            bar.update(done, total, label=label)
+            term.show_status(f"Checking for updates... {prefix} {a['name']}")
+            bar = term.Progress()
+            downloading = False
 
-        r = updater.update_app(a, cfg["settings"], confirm_fn=confirm, progress_cb=_progress)
-        if is_auto:
-            had_auto = True
+            def _progress(done, dl_total, label=a["name"], _prefix=prefix, _bar=bar):
+                nonlocal downloading
+                if not downloading:
+                    downloading = True
+                    term.clear_status()
+                _bar.set(done, dl_total, label=f"{_prefix} {label}")
+
+            try:
+                r = updater.update_app(a, cfg["settings"], confirm_fn=confirm, progress_cb=_progress)
+            finally:
+                term.clear_status()
+                bar.finish()
+            if is_auto:
+                had_auto = True
+                if r.state == "updated":
+                    applied += 1
+                elif r.state == "uptodate":
+                    uptodate += 1
+                elif r.state == "error":
+                    errors += 1
+                    result = 1
+                    print(f"{term.red(STATE_ICON['error'])} {term.bold(a['name'])}: {r.message}", file=sys.stderr)
+                elif r.state == "skipped":
+                    pass
+                continue
             if r.state == "updated":
                 applied += 1
+                print(f"{term.green(STATE_ICON['updated'])} {term.bold(a['name'])} -> {term.green(r.version)}")
             elif r.state == "uptodate":
-                uptodate += 1
+                print(f"{term.green(STATE_ICON['uptodate'])} {term.bold(a['name'])}: up to date ({r.version})")
+            elif r.state == "skipped":
+                print(f"{term.yellow(STATE_ICON['skipped'])} {term.bold(a['name'])}: skipped")
             elif r.state == "error":
-                errors += 1
                 result = 1
                 print(f"{term.red(STATE_ICON['error'])} {term.bold(a['name'])}: {r.message}", file=sys.stderr)
-            elif r.state == "skipped":
-                pass
-            continue
-        if r.state == "updated":
-            applied += 1
-            print(f"{term.green(STATE_ICON['updated'])} {term.bold(a['name'])} -> {term.green(r.version)}")
-        elif r.state == "uptodate":
-            print(f"{term.green(STATE_ICON['uptodate'])} {term.bold(a['name'])}: up to date ({r.version})")
-        elif r.state == "skipped":
-            print(f"{term.yellow(STATE_ICON['skipped'])} {term.bold(a['name'])}: skipped")
-        elif r.state == "error":
-            result = 1
-            print(f"{term.red(STATE_ICON['error'])} {term.bold(a['name'])}: {r.message}", file=sys.stderr)
+    finally:
+        term.clear_status()
     if had_auto:
-        bar.finish()
-        parts = [term.green(str(applied) + " aggiornate")]
+        parts = [term.green(str(applied) + " updated")]
         if uptodate:
-            parts.append(term.yellow(str(uptodate) + " già aggiornate"))
+            parts.append(term.yellow(str(uptodate) + " already up to date"))
         if errors:
-            parts.append(term.red(str(errors) + " errori"))
+            parts.append(term.red(str(errors) + " errors"))
         print("\n" + ", ".join(parts) + ".")
     if applied:
         return 2
@@ -211,7 +234,11 @@ def cmd_show(cfg, args):
             print(kv("Version:", local))
             print(kv("Auto:", "yes" if a.get("auto_update") else "no"))
             try:
-                info = updater.latest_info(a)
+                term.show_status(f"Checking for updates... {a['name']}")
+                try:
+                    info = updater.latest_info(a)
+                finally:
+                    term.clear_status()
                 print(kv("Latest:", f"{info['tag']} ({info['asset_name']})"))
             except github.GitHubError as e:
                 print(kv("Latest:", f"error -> {e}", term.red))
