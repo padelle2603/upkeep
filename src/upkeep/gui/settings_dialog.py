@@ -61,7 +61,7 @@ class SettingsDialog(Gtk.Dialog):
         arch_hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.x86_check = Gtk.CheckButton(label="x86_64")
         self.arm_check = Gtk.CheckButton(label="aarch64")
-        self.any_check = Gtk.CheckButton(label="Qualsiasi")
+        self.any_check = Gtk.CheckButton(label="Any")
         default_arch = cfg["settings"].get("default_arch", "x86_64")
         for cb, val in ((self.x86_check, "x86_64"), (self.arm_check, "aarch64"), (self.any_check, "any")):
             cb.connect("toggled", self._arch_toggled, val)

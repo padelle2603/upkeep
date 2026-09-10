@@ -180,7 +180,7 @@ class AppRow(Gtk.ListBoxRow):
         self.refresh(settings)
 
     def refresh(self, settings):
-        local = config.read_local_version(self.app, settings) or "non installata"
+        local = config.read_local_version(self.app, settings) or "not installed"
         self.local_version = local
         path = config.app_target_path(self.app)
         self.installed = os.path.exists(path)
@@ -203,7 +203,7 @@ class AppRow(Gtk.ListBoxRow):
         self._update_sub()
 
     def _update_sub(self):
-        local = self.local_version if self.installed else "non installata"
+        local = self.local_version if self.installed else "not installed"
         if self.remote_tag and self.remote_tag != self.local_version:
             self.sub_label.set_text(f"{local}  \u2192  {self.remote_tag}")
         else:
@@ -215,7 +215,7 @@ class AppRow(Gtk.ListBoxRow):
         if not enabled:
             ctx.add_class("disabled")
             self.update_btn.set_sensitive(False)
-            self._set_pill("Disabilitata", "pill-disabled")
+            self._set_pill("Disabled", "pill-disabled")
             self._set_dot("dot-neutral")
             return
         ctx.remove_class("disabled")

@@ -13,7 +13,7 @@
 @define-color base @theme_base_color;
 @define-color fg @theme_fg_color;
 
-/* ---------- Finestra ---------- */
+/* ---------- Window ---------- */
 .app-window {
     background-color: @bg;
 }
@@ -36,7 +36,7 @@
     color: alpha(@fg, 0.55);
 }
 
-/* ---------- Pulsanti ---------- */
+/* ---------- Buttons ---------- */
 .primary-btn {
     background-image: linear-gradient(to bottom, @accent2, @accent);
     background-color: @accent;
@@ -138,7 +138,7 @@
     box-shadow: none;
 }
 
-/* ---------- Barra riepilogo ---------- */
+/* ---------- Summary bar ---------- */
 .summary-strip {
     margin: 10px 12px 4px 12px;
 }
@@ -165,7 +165,7 @@
     color: alpha(@fg, 0.55);
 }
 
-/* ---------- Lista (card) ---------- */
+/* ---------- List (card) ---------- */
 .app-list {
     padding: 2px 10px 8px 10px;
 }
@@ -213,7 +213,7 @@
     color: alpha(@fg, 0.45);
 }
 
-/* ---------- Pill di stato ---------- */
+/* ---------- Status pill ---------- */
 .status-pill {
     padding: 2px 10px;
     border-radius: 999px;
@@ -248,7 +248,7 @@
     color: alpha(@neutral, 0.70);
 }
 
-/* ---------- Pallino di stato ---------- */
+/* ---------- Status dot ---------- */
 .dot-ok { color: @ok; }
 .dot-warn { color: @warn; }
 .dot-err { color: @err; }
