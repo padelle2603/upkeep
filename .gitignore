@@ -7,3 +7,11 @@ dist/
 build/
 *.log
 .DS_Store
+
+# AI Agent directives & local changelog (not part of the repo)
+AGENTS.md
+REFACTOR.md
+RELEASE_CHECKLIST.md
+GIT_COMMIT_CHECKLIST.md
+Changelog.md
+CHANGELOG.md
