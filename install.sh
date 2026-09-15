@@ -3,6 +3,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -e
 
+VERBOSE=0
+for arg in "$@"; do
+    case "$arg" in
+        --verbose) VERBOSE=1 ;;
+    esac
+done
+_vlog()  { if [ "$VERBOSE" -eq 1 ]; then echo "  $1"; fi; }
+_warn()  { echo "  ! $1" >&2; }
+
 SRC="$(cd "$(dirname "$0")" && pwd)"
 PREFIX="${HOME}/.local"
 LIBDIR="${PREFIX}/lib/upkeep"
@@ -10,10 +19,11 @@ BINDIR="${PREFIX}/bin"
 APPDIR="${PREFIX}/share/applications"
 ICONDIR="${PREFIX}/share/icons/hicolor"
 
-echo "Installing Upkeep in ${LIBDIR}"
+echo "Upkeep - Installation"
 mkdir -p "${LIBDIR}" "${BINDIR}" "${APPDIR}"
 
 # Copy sources (bin, src, tests, README) keeping the structure
+_vlog "Copying sources to ${LIBDIR}"
 cp -r "${SRC}/bin" "${SRC}/src" "${SRC}/tests" "${LIBDIR}/" 2>/dev/null || cp -r "${SRC}/bin" "${SRC}/src" "${LIBDIR}/"
 [ -f "${SRC}/README.md" ] && cp "${SRC}/README.md" "${LIBDIR}/"
 
@@ -61,16 +71,17 @@ if [ -f "${ICON_SRC}" ]; then
         RENDER="convert"
     else
         RENDER=""
-        echo "Warning: neither rsvg-convert nor ImageMagick 'convert' found; installing SVG icon only."
+        _warn "neither rsvg-convert nor ImageMagick 'convert' found; installing SVG icon only."
     fi
     for size in 48 128 256 512; do
         mkdir -p "${ICONDIR}/${size}x${size}/apps"
+        _vlog "Rendering ${size}x${size} icon..."
         if [ "${RENDER}" = "rsvg-convert" ]; then
             rsvg-convert -w "${size}" -h "${size}" -o "${ICONDIR}/${size}x${size}/apps/upkeep.png" "${ICON_SRC}" \
-                || echo "Warning: failed to render ${size}x${size} icon."
+                || _warn "failed to render ${size}x${size} icon."
         elif [ "${RENDER}" = "convert" ]; then
             convert -background none "${ICON_SRC}" -resize "${size}x${size}" "${ICONDIR}/${size}x${size}/apps/upkeep.png" \
-                || echo "Warning: failed to render ${size}x${size} icon."
+                || _warn "failed to render ${size}x${size} icon."
         fi
     done
     if command -v gtk-update-icon-cache >/dev/null 2>&1; then
@@ -95,6 +106,7 @@ if [ ! -f "${HOME}/.config/upkeep/config.json" ]; then
 EOF
 fi
 
-echo "Done."
+echo ""
+echo "Installed to ${LIBDIR}"
 echo "   CLI: ${BINDIR}/upkeep  (try: upkeep --help)"
 echo "   GUI: ${BINDIR}/upkeep-gui"
