@@ -104,3 +104,5 @@ CachyOS, or GitHub.
 
 GNU General Public License v3.0 or later (GPL-3.0-or-later). See
 [LICENSE](LICENSE).
+
+*Developed with the assistance of [opencode](https://opencode.ai).*
