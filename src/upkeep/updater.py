@@ -31,6 +31,17 @@ def desktop_path(app):
     return DESKTOP_DIR / f"{sanitize_name(app['name'])}.desktop"
 
 
+def _refresh_desktop_database():
+    """Rebuild the MIME cache. Best effort: never fail an update for this."""
+    try:
+        subprocess.run(
+            ["update-desktop-database", "-q", str(DESKTOP_DIR)],
+            timeout=30, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+
+
 def _extract_appimage_icon(app_image, name):
     tmp = tempfile.mkdtemp(prefix="au-icon-")
     try:
@@ -90,6 +101,7 @@ def write_desktop_entry(app, settings):
         icon = "application-x-executable"
     content = (
         "[Desktop Entry]\n"
+        "Version=1.0\n"
         "Type=Application\n"
         f"Name={display_name}\n"
         f"Comment=AppImage {app['name']} (managed by Upkeep)\n"
@@ -102,6 +114,7 @@ def write_desktop_entry(app, settings):
         DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
         path = desktop_path(app)
         path.write_text(content)
+        _refresh_desktop_database()
         return str(path)
     except OSError:
         return None
@@ -114,6 +127,7 @@ def remove_desktop_entry(app):
             p.unlink()
     except OSError:
         pass
+    _refresh_desktop_database()
 
 
 def latest_info(app, timeout=github.DEFAULT_TIMEOUT):
