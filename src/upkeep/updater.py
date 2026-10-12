@@ -106,7 +106,10 @@ def write_desktop_entry(app, settings):
         f"Exec=\"{target}\"\n"
         # Without TryExec the launcher keeps showing a menu entry whose
         # executable is gone, and clicking it does nothing at all.
-        f"TryExec=\"{target}\"\n"
+        # No quotes here: unlike Exec, TryExec is a plain path, not a
+        # shell-parsed command line. Quotes become literal characters,
+        # the executable is then not found, and GIO/KIO discard the entry.
+        f"TryExec={target}\n"
         f"Icon={icon}\n"
         "Terminal=false\n"
         "Categories=Utility;\n"

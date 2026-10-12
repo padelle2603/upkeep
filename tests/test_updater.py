@@ -237,7 +237,14 @@ class TestWriteDesktopEntry:
         app, exe = desktop_env
         write_desktop_entry(app, {})
         content = (updater.DESKTOP_DIR / "cheat-engine.desktop").read_text()
-        assert f'TryExec="{exe}"' in content
+        assert f"TryExec={exe}\n" in content
+
+    def test_try_exec_is_not_quoted(self, desktop_env):
+        """TryExec is a plain path, not a command line: quotes break lookups."""
+        app, exe = desktop_env
+        write_desktop_entry(app, {})
+        content = (updater.DESKTOP_DIR / "cheat-engine.desktop").read_text()
+        assert '"' not in content.split("TryExec=", 1)[1].split("\n", 1)[0]
 
     def test_try_exec_comes_after_exec(self, desktop_env):
         """desktop-file-utils requires Exec before TryExec."""
