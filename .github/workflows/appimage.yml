@@ -33,8 +33,8 @@ jobs:
             exit 1
           fi
           echo "UPKEEP_VERSION=${pyproject}" >> "$GITHUB_ENV"
-          echo "UPKEEP_APPIMAGE=Upkeep-${pyproject}-x86_64.AppImage" >> "$GITHUB_ENV"
-          echo "building Upkeep-${pyproject}-x86_64.AppImage"
+          echo "UPKEEP_APPIMAGE=Upkeep-v${pyproject}-x86_64.AppImage" >> "$GITHUB_ENV"
+          echo "building Upkeep-v${pyproject}-x86_64.AppImage"
           if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$pyproject" ]; then
             echo "::error::tag ${GITHUB_REF_NAME} does not match the version ${pyproject}"
             exit 1
@@ -53,6 +53,15 @@ jobs:
         run: ./packaging/build-appimage.sh
         env:
           ARCH: x86_64
+
+      # A workflow_dispatch run publishes nothing, so without this the only
+      # way to get the artifact out is to cut a release.
+      - name: Upload the AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: upkeep-appimage
+          path: ${{ env.UPKEEP_APPIMAGE }}
+          if-no-files-found: error
 
       - name: Smoke test
         run: |

@@ -18,7 +18,7 @@ cd "$SCRIPT_DIR/.."
 VERSION="${1:-$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)}"
 ARCH="${ARCH:-x86_64}"
 APPDIR="${APPDIR:-AppDir}"
-OUT="Upkeep-${VERSION}-${ARCH}.AppImage"
+OUT="Upkeep-v${VERSION}-${ARCH}.AppImage"
 BUNDLE="${BUNDLE:-build/appimage}"
 KEEP_THEME="${KEEP_THEME:-Adwaita}"
 
@@ -63,10 +63,22 @@ rsvg-convert -w 256 -h 256 -o "${APPDIR}/upkeep.png" icons/upkeep.svg 2>/dev/nul
 cp packaging/upkeep.desktop "${APPDIR}/upkeep.desktop"
 cp README.md LEGAL.md PRIVACY.md "${APPDIR}/usr/share/doc/upkeep/"
 
+# The CA store ships with the app. The frozen libcrypto cannot be relied on to
+# find the host's: with it missing, TLS verification fails with "unable to get
+# local issuer certificate" and the release check reports itself as offline.
+# Upkeep is an updater, so a bundle that cannot verify TLS is useless.
+CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+[ -f "$CA_BUNDLE" ] || CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt
+[ -f "$CA_BUNDLE" ] || { echo "no CA bundle found; the AppImage would fail TLS" >&2; exit 1; }
+mkdir -p "${APPDIR}/usr/share/ca-certificates"
+cp "$CA_BUNDLE" "${APPDIR}/usr/share/ca-certificates/ca-certificates.crt"
+
 cat > "${APPDIR}/AppRun" <<'RUNNER'
 #!/bin/sh
 HERE="$(dirname "$(readlink -f "$0")")"
 export APPDIR="$HERE"
+export SSL_CERT_FILE="$HERE/usr/share/ca-certificates/ca-certificates.crt"
+export GIT_SSL_CAINFO="$SSL_CERT_FILE"
 exec "$HERE/usr/bin/upkeep" "$@"
 RUNNER
 chmod +x "${APPDIR}/AppRun" "${APPDIR}/usr/bin/upkeep"
