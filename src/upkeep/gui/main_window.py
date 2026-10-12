@@ -4,6 +4,7 @@
 # Licensed under the GNU GPL v3 or later; see LICENSE and NOTICE.
 
 import os
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -14,7 +15,9 @@ gi.require_version("Gdk", "3.0")
 from gi.repository import Gtk, Gdk, GLib, Pango
 
 from .. import config
+from .. import selfupdate
 from .. import updater
+from .. import __version__
 
 from .app_dialog import AppDialog
 from .settings_dialog import SettingsDialog
@@ -24,6 +27,15 @@ ICON_NAME = "upkeep"
 
 
 def _project_root():
+    """Where icons/ and docs/ live.
+
+    Inside the AppImage the package sits at usr/bin/_internal/upkeep/gui, so
+    parents[3] lands in the middle of the bundle and finds nothing. AppRun
+    exports $APPDIR pointing at the mount point; the icon is at its root.
+    """
+    appdir = os.environ.get("APPDIR")
+    if appdir:
+        return Path(appdir)
     return Path(__file__).resolve().parents[3]
 
 
@@ -53,6 +65,9 @@ def get_app_pixbuf(size=64):
     except Exception:
         pass
     svg = _project_root() / "icons" / f"{ICON_NAME}.svg"
+    if not svg.exists():
+        # Also shipped at the AppImage root as a rendered bitmap.
+        svg = _project_root() / "upkeep.svg"
     if svg.exists():
         try:
             from gi.repository import GdkPixbuf
@@ -386,6 +401,70 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.rebuild_list()
 
+    def show_update(self, version):
+        """'Upkeep 1.1.0 is available', shown once per launch.
+
+        Download hands over to the browser. Upkeep manages other people's
+        AppImages, not itself: it never replaces its own binary. Not now just
+        closes, nothing is remembered, and the check runs again next launch.
+        """
+        win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+        win.set_title("Upkeep update")
+        win.set_transient_for(self)
+        win.set_default_size(460, -1)
+        win.set_resizable(False)
+
+        header = Gtk.HeaderBar()
+        header.set_show_close_button(True)
+        not_now = _btn_with_icon("Not now", None, ("ghost-btn",))
+        not_now.connect("clicked", lambda *_: win.destroy())
+        header.pack_start(not_now)
+        download = _btn_with_icon("Download", None, ("primary-btn",))
+        download.connect("clicked", lambda *_: (self._open_releases(), win.destroy()))
+        header.pack_end(download)
+
+        body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
+        body.set_margin_start(20)
+        body.set_margin_end(20)
+        body.set_margin_top(8)
+        body.set_margin_bottom(20)
+        body.pack_start(
+            Gtk.Image.new_from_icon_name("software-update-available-symbolic", Gtk.IconSize.DIALOG),
+            False, False, 0,
+        )
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        title = Gtk.Label(label=f"Upkeep {version} is available", xalign=0)
+        title.get_style_context().add_class("empty-title")
+        detail = Gtk.Label(
+            label=(
+                f"You are running {__version__}. Upkeep never updates itself — "
+                "download the new version and replace the AppImage."
+            ),
+            xalign=0,
+        )
+        detail.set_line_wrap(True)
+        detail.set_max_width_chars(46)
+        detail.get_style_context().add_class("empty-sub")
+        text.pack_start(title, False, False, 0)
+        text.pack_start(detail, False, False, 0)
+        body.pack_start(text, True, True, 0)
+
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        content.pack_start(header, False, False, 0)
+        content.pack_start(body, True, True, 0)
+        win.add(content)
+        win.show_all()
+
+    def _open_releases(self):
+        try:
+            subprocess.Popen(
+                ["xdg-open", selfupdate.RELEASES_URL],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            self._notify("Could not open a browser. Visit " + selfupdate.RELEASES_URL)
+
     def _stat_card(self, key, label, accent):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         card.get_style_context().add_class("stat-card")
@@ -703,8 +782,15 @@ class UpdaterApplication(Gtk.Application):
             return
         self.win = MainWindow(self)
         self.win.show_all()
+        threading.Thread(target=self._check_self, daemon=True).start()
         if self.win.cfg["settings"].get("check_on_startup", True):
             GLib.idle_add(self.win.run_checks, True)
+
+    def _check_self(self):
+        """One anonymous HEAD request, off the UI thread, silent on failure."""
+        version = selfupdate.available_version(__version__)
+        if version:
+            GLib.idle_add(self.win.show_update, version)
 
 
 def run():

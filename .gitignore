@@ -7,6 +7,16 @@ dist/
 build/
 *.log
 .DS_Store
+.pytest_cache/
+
+# AppImage build output
+AppDir/
+*.AppImage
+
+# Local-only system installer: the AppImage is the distribution method.
+# Kept on disk for local dev, no longer part of the repo.
+install.sh
+uninstall.sh
 
 # AI Agent directives & local changelog (not part of the repo)
 AGENTS.md

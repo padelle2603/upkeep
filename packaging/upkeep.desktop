@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Upkeep
+Comment=Automatically update AppImages from GitHub releases
+Exec=upkeep
+TryExec=upkeep
+Icon=upkeep
+Terminal=false
+Categories=System;PackageManager;
+Keywords=appimage;update;github;
+StartupNotify=true

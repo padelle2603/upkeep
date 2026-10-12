@@ -9,7 +9,9 @@ import sys
 from . import config
 from . import updater
 from . import github
+from . import selfupdate
 from . import term
+from . import __version__
 
 STATE_ICON = {
     "outdated": "\U0001f4e6",
@@ -285,7 +287,30 @@ def build_parser():
     c.add_argument("name")
     c.set_defaults(fn=cmd_show)
 
+    c = sub.add_parser(
+        "self",
+        help="Check whether a newer Upkeep release exists "
+             "(exit 0 current, 10 newer available, 1 offline).",
+    )
+    c.set_defaults(fn=cmd_self)
+
     return p
+
+
+def cmd_self(cfg, args):
+    """One anonymous HEAD request, deliberately not through the GitHub API."""
+    remote = selfupdate.latest_tag()
+    if remote is None:
+        print(f"upkeep {__version__}")
+        print(
+            "error: no release published on GitHub yet, or github.com is unreachable",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"upkeep {__version__} (current)")
+    print(f"Latest release: v{remote}")
+    print(f"{selfupdate.RELEASES_URL}/tag/v{remote}")
+    return 10 if github.newer_than(__version__, remote) else 0
 
 
 def cmd_sync(cfg, args):

@@ -36,12 +36,12 @@ Upkeep stores only the configuration and state needed for its function, all on
   (default: `~/.local/share/applications/Appimages/`), plus extracted icons
   under `~/.local/share/upkeep/icons/` and `.desktop` menu entries under
   `~/.local/share/applications/`.
-- **Installed program files** — Upkeep's own code and launchers under
-  `~/.local/lib/upkeep` and `~/.local/bin`, plus its icons and menu entry.
+- **Installed program files** — the AppImage you downloaded, kept wherever you
+  put it. Upkeep never installs itself into a system directory.
 
 This data is purely functional. Upkeep stores **no secrets, tokens, credentials
-or personal information**. The uninstaller removes Upkeep's own files and asks
-before deleting your configuration and tracker files; the AppImage binaries
+or personal information**. Removing the AppImage removes Upkeep itself; the
+AppImage binaries
 themselves are never touched.
 
 ## 3. Network access
@@ -88,9 +88,11 @@ system-wide.
 ## 6. Backup and deletion
 
 Upkeep does not back up or transmit your data anywhere. To remove all traces of
-it, run `uninstall.sh`: it removes Upkeep's own files, and — after asking you —
-your configuration and tracker files. Downloaded AppImages are yours and are
-left untouched.
+it, delete the AppImage file. To also drop your configuration and version
+tracker files, delete `~/.config/upkeep/` and
+`~/.cache/appimage_tracker_*.txt` — Upkeep will recreate the configuration with
+its defaults on the next launch. Downloaded AppImages are yours and are never
+touched.
 
 ## 7. Children's privacy
 

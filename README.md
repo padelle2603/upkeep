@@ -11,32 +11,28 @@ AppImages (filterable via checkbox) and arm64.
 ## Requirements
 
 - Python 3 (>= 3.9)
-- PyGObject / `python-gobject` (GUI only)
-- No other tools: it uses the standard library (`urllib`)
+- PyGObject / `python-gobject` (GUI only, not needed for the AppImage)
+- No other tools: it uses the standard library (`urllib`, `http.client`)
 
 ## Installation
 
+Download the **AppImage** from [Releases](https://github.com/padelle2603/upkeep/releases):
+
 ```bash
-./install.sh
+chmod +x Upkeep-*-x86_64.AppImage
+./Upkeep-*-x86_64.AppImage
 ```
 
-Installs into `~/.local`:
-
-- `~/.local/bin/upkeep` → CLI
-- `~/.local/bin/upkeep-gui` → GUI
-- "Upkeep" menu entry
-- logo in `~/.local/share/icons/hicolor/` (SVG + PNG 48/128/256/512), used by
-  the window, HeaderBar, notifications and the menu
+No installer, no `sudo`, no Python environment: the AppImage carries Python,
+PyGObject and GTK3. Run it with arguments for the CLI (`./Upkeep-*.AppImage
+list`), without for the GUI.
 
 ## Uninstall
 
-```bash
-./uninstall.sh
-```
-
-Removes the launchers, the library folder, the menu entries, the icons and
-(after confirmation) the configuration and version tracker files. AppImage
-files themselves are never touched.
+Delete the AppImage file. Your configuration lives in `~/.config/upkeep/` and
+your version trackers in `~/.cache/appimage_tracker_*.txt`; remove those too if
+you want a clean slate. AppImages Upkeep manages are yours and are never
+touched.
 
 ## Configuration
 
@@ -68,6 +64,7 @@ upkeep sync                       # check and update everything without confirma
 upkeep add --name X --repo O/R [--dir DIR] [--path FILE] [--filter REGEX] [--arch x86_64|aarch64|any] [--auto]
 upkeep remove NAME
 upkeep show NAME
+upkeep self                      # is a newer Upkeep release out? 0=no 10=yes 1=offline
 ```
 
 Exit codes: `0` ok, `1` errors, `2` updates applied.
@@ -89,9 +86,14 @@ upkeep sync
   you should verify the integrity of the software you run yourself.
 - When creating a `.desktop` entry, the AppImage is executed with
   `--appimage-extract` to extract an icon.
-- The GitHub REST API is used without authentication: you are subject to the
-  public rate limit (60 requests/hour per IP). Exceeding it is handled
-  gracefully and reported to the user.
+- The GitHub REST API is used without authentication for the apps you manage:
+  you are subject to the public rate limit (60 requests/hour per IP). Exceeding
+  it is handled gracefully and reported to the user.
+- Upkeep's **own** release check is deliberately not routed through that API,
+  so it never spends your rate-limit budget. It is one anonymous `HEAD` to
+  `github.com/padelle2603/upkeep/releases/latest`: no token, no cookies, no
+  JSON, nothing written to disk. It never downloads or replaces Upkeep itself
+  — the "Download" button opens the release page in your browser.
 - This tool only automates downloads from the repositories you configure.
   You are responsible for complying with the license of each downloaded
   application.
