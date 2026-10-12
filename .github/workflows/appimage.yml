@@ -69,7 +69,12 @@ jobs:
           ls -la "$IMG"
           file "$IMG"
           chmod +x "$IMG"
-          "$IMG" list
+          "$IMG" --appimage-offset >/dev/null || { echo "the AppImage runtime does not start here"; exit 1; }
+          # FUSE is not guaranteed on a runner; the runtime can extract instead.
+          if ! "$IMG" list; then
+            echo "direct run failed (rc=$?), retrying with APPIMAGE_EXTRACT_AND_RUN"
+            APPIMAGE_EXTRACT_AND_RUN=1 "$IMG" list
+          fi
           # `self` exits 0 current, 10 newer, 1 no release yet / offline.
           "$IMG" self || [ $? -le 10 ]
 
