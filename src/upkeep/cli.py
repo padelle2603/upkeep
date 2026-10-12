@@ -188,6 +188,7 @@ def cmd_add(cfg, args):
         "arch": args.arch or cfg["settings"].get("default_arch") or "x86_64",
         "auto_update": args.auto,
         "enabled": True,
+        "create_desktop": not args.no_desktop,
     })
     for i, a in enumerate(cfg["apps"]):
         if a["name"] == name:
@@ -273,6 +274,7 @@ def build_parser():
     c.add_argument("--filter", help="Regex to select the asset")
     c.add_argument("--arch", choices=config.ARCHS)
     c.add_argument("--auto", action="store_true", help="Update without asking for confirmation")
+    c.add_argument("--no-desktop", action="store_true", help="Do not create a .desktop entry for this app")
     c.set_defaults(fn=cmd_add)
 
     c = sub.add_parser("remove")
