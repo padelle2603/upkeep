@@ -9,6 +9,8 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
 from .. import config
+from .. import selfupdate
+from .. import updater
 
 
 class SettingsDialog(Gtk.Dialog):
@@ -58,6 +60,23 @@ class SettingsDialog(Gtk.Dialog):
         self.create_desktop.set_active(bool(cfg["settings"].get("create_desktop", True)))
         box.pack_start(self.create_desktop, False, False, 0)
 
+        self.cli_command = Gtk.CheckButton(label="Add the upkeep command to PATH")
+        # State comes from the filesystem, not from a saved setting.
+        self.cli_command.set_active(updater.cli_command_active())
+        self.cli_command.set_sensitive(updater.running_appimage() is not None)
+        if updater.running_appimage() is None:
+            self.cli_command.set_tooltip_text(
+                "Only available when Upkeep runs from its AppImage."
+            )
+        self.cli_command.connect("toggled", self._cli_toggled)
+        box.pack_start(self.cli_command, False, False, 0)
+        cli_hint = Gtk.Label(
+            label=f"Runs Upkeep from a terminal as: {updater.cli_command_path()}",
+            xalign=0,
+        )
+        cli_hint.get_style_context().add_class("dim-label")
+        box.pack_start(cli_hint, False, False, 0)
+
         arch_hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.x86_check = Gtk.CheckButton(label="x86_64")
         self.arm_check = Gtk.CheckButton(label="aarch64")
@@ -88,6 +107,68 @@ class SettingsDialog(Gtk.Dialog):
         dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Select", Gtk.ResponseType.ACCEPT)
         if dlg.run() == Gtk.ResponseType.ACCEPT:
             self.dir_entry.set_text(dlg.get_filename())
+        dlg.destroy()
+
+    def _cli_toggled(self, cb):
+        """Act on the click, not on Save.
+
+        A switch that only takes effect when you close the dialog is a switch
+        that lies. The filesystem is the source of truth, so a failure puts
+        the box back where it was.
+        """
+        if getattr(self, "_cli_busy", False):
+            return
+        ok, message = updater.set_cli_command(cb.get_active())
+        if ok:
+            notes = []
+            if cb.get_active():
+                warning = updater.path_warning()
+                if warning:
+                    notes.append(warning)
+                if self._manages_itself():
+                    notes.append(
+                        "Upkeep is also in your managed apps, so its .desktop "
+                        "entry is rewritten on every update and will stop "
+                        "pointing at the upkeep command.\n\n"
+                        "Remove it with:  upkeep remove Upkeep\n"
+                        "You will still be told when a new version is out."
+                    )
+            if notes:
+                self._say("\n\n".join([message] + notes), warning=True)
+            return
+        self._cli_busy = True
+        cb.set_active(not cb.get_active())
+        self._cli_busy = False
+        self._say(message, error=True)
+
+    def _manages_itself(self):
+        """True when Upkeep also sits in its own config as a managed app.
+
+        In that case write_desktop_entry rewrites upkeep.desktop on every
+        update, so the menu entry stops pointing at the upkeep command.
+        """
+        for app in self.cfg.get("apps") or []:
+            if (app.get("repo") or "").lower() == selfupdate.SELF_REPO.lower():
+                if app.get("create_desktop", True):
+                    return True
+        return False
+
+    def _say(self, text, error=False, warning=False):
+        """Friendly dialog instead of a crash or a silent no-op."""
+        if not text:
+            return
+        kind = Gtk.MessageType.ERROR if error else (
+            Gtk.MessageType.WARNING if warning else Gtk.MessageType.INFO
+        )
+        dlg = Gtk.MessageDialog(
+            transient_for=self,
+            modal=True,
+            message_type=kind,
+            buttons=Gtk.ButtonsType.OK,
+            text="upkeep command",
+        )
+        dlg.format_secondary_text(text)
+        dlg.run()
         dlg.destroy()
 
     def _arch_toggled(self, cb, val):

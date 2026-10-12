@@ -21,6 +21,7 @@ USER_AGENT = f"upkeep/{__import__('upkeep').__version__}"
 
 DESKTOP_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "applications"
 ICON_STORE_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "upkeep" / "icons"
+LOCAL_BIN = Path.home() / ".local" / "bin"
 
 
 def sanitize_name(name):
@@ -103,6 +104,9 @@ def write_desktop_entry(app, settings):
         f"Name={display_name}\n"
         f"Comment=AppImage {app['name']} (managed by Upkeep)\n"
         f"Exec=\"{target}\"\n"
+        # Without TryExec the launcher keeps showing a menu entry whose
+        # executable is gone, and clicking it does nothing at all.
+        f"TryExec=\"{target}\"\n"
         f"Icon={icon}\n"
         "Terminal=false\n"
         "Categories=Utility;\n"
@@ -125,6 +129,82 @@ def remove_desktop_entry(app):
     except OSError:
         pass
     _refresh_desktop_database()
+
+
+def running_appimage():
+    """Absolute path of the AppImage being executed, or None outside one.
+
+    The AppImage runtime exports $APPIMAGE. $APPDIR is the trap: it points
+    inside /tmp/.mount_*, which is torn down when the process exits, so a
+    symlink made to it would be dead on arrival.
+    """
+    return os.environ.get("APPIMAGE") or None
+
+
+def cli_command_path():
+    return LOCAL_BIN / "upkeep"
+
+
+def cli_command_active():
+    """Whether the checkbox should start ticked: the filesystem, not the config.
+
+    Reading the config instead would resurrect a symlink the user deleted by
+    hand the moment they opened Settings and pressed Save.
+    """
+    return cli_command_path().is_symlink()
+
+
+def path_warning():
+    """Tell the user when the link is there but the shell will not find it.
+
+    Upstream is told what is wrong rather than editing a shell profile on
+    its own: rc files are the user's, and the right line differs per shell.
+    """
+    entries = (os.environ.get("PATH") or "").split(os.pathsep)
+    if str(LOCAL_BIN) in entries:
+        return ""
+    return (
+        f"{LOCAL_BIN} is not in your PATH. Add this to your shell profile:\n\n"
+        f'    export PATH="{LOCAL_BIN}:$PATH"\n\n'
+        "New terminals will find it; run 'hash -r' in the current one."
+    )
+
+
+def set_cli_command(enabled):
+    """Create or remove ~/.local/bin/upkeep. Returns (ok, message).
+
+    Refuses to touch a real file that happens to sit there: only a symlink
+    this function knows how to manage gets in the way.
+    """
+    link = cli_command_path()
+    if not enabled:
+        if not link.is_symlink():
+            return True, "No upkeep command in PATH."
+        try:
+            link.unlink()
+        except OSError as e:
+            return False, f"Could not remove {link}: {e}"
+        return True, f"Removed {link}."
+
+    source = running_appimage()
+    if not source:
+        return False, (
+            "The upkeep command can only be installed when Upkeep runs from "
+            "its AppImage."
+        )
+    if link.exists() and not link.is_symlink():
+        return False, (
+            f"{link} already exists and is not a symlink, so it was left "
+            f"untouched. Remove it yourself if you want the upkeep command."
+        )
+    try:
+        LOCAL_BIN.mkdir(parents=True, exist_ok=True)
+        if link.is_symlink():
+            link.unlink()
+        link.symlink_to(source)
+    except OSError as e:
+        return False, f"Could not create {link}: {e}"
+    return True, f"Linked {link} -> {source}."
 
 
 def latest_info(app, timeout=github.DEFAULT_TIMEOUT):
