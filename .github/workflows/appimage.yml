@@ -69,14 +69,10 @@ jobs:
           ls -la "$IMG"
           file "$IMG"
           chmod +x "$IMG"
-          "$IMG" --appimage-offset >/dev/null || { echo "the AppImage runtime does not start here"; exit 1; }
-          # FUSE is not guaranteed on a runner; the runtime can extract instead.
-          if ! "$IMG" list; then
-            echo "direct run failed (rc=$?), retrying with APPIMAGE_EXTRACT_AND_RUN"
-            APPIMAGE_EXTRACT_AND_RUN=1 "$IMG" list
-          fi
+          ./"$IMG" --appimage-offset >/dev/null
+          ./"$IMG" list
           # `self` exits 0 current, 10 newer, 1 no release yet / offline.
-          "$IMG" self || [ $? -le 10 ]
+          ./"$IMG" self || [ $? -le 10 ]
 
       - name: Publish the release
         if: startsWith(github.ref, 'refs/tags/v')
