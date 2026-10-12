@@ -34,11 +34,13 @@ def _load_css():
     provider = Gtk.CssProvider()
     try:
         provider.load_from_path(str(css))
+        # Guarded: an unknown StyleContext API here would take do_startup
+        # down with it and the window would never open.
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
     except Exception:
         return False
-    Gtk.StyleContext.add_provider_for_display(
-        Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-    )
     return True
 
 
