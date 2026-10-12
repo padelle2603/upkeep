@@ -54,7 +54,9 @@ When an AppImage is installed or updated, a menu entry
 `~/.local/share/applications/<name>.desktop` is created with `Exec` pointing
 to the AppImage and the icon extracted from the AppImage itself (fallback to
 a generic icon). The entry is removed if the app is deleted. Can be disabled
-with the `create_desktop` setting (default `true`).
+globally with the `create_desktop` setting (default `true`), and per app with
+the "Create a .desktop entry for this app" checkbox in the add/edit dialog or
+with `upkeep add --no-desktop`.
 
 ## CLI
 
