@@ -22,6 +22,8 @@ jobs:
             librsvg2-bin desktop-file-utils file
           python3 -m pip install --break-system-packages pyinstaller pytest pytest-mock
 
+      # pyproject.toml is canonical. workflow_dispatch has no tag, so taking
+      # the version from GITHUB_REF_NAME would produce Upkeep-main-*.AppImage.
       - name: Version sync
         run: |
           pyproject="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
@@ -30,7 +32,13 @@ jobs:
             echo "::error::pyproject.toml ($pyproject) and __init__.py ($module) disagree"
             exit 1
           fi
-          echo "version $pyproject"
+          echo "UPKEEP_VERSION=${pyproject}" >> "$GITHUB_ENV"
+          echo "UPKEEP_APPIMAGE=Upkeep-${pyproject}-x86_64.AppImage" >> "$GITHUB_ENV"
+          echo "building Upkeep-${pyproject}-x86_64.AppImage"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$pyproject" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match the version ${pyproject}"
+            exit 1
+          fi
 
       - name: Tests
         run: PYTHONPATH=src python3 -m pytest tests/ -q
@@ -42,19 +50,22 @@ jobs:
           chmod +x /usr/local/bin/appimagetool
 
       - name: Build AppImage
-        run: ./packaging/build-appimage.sh "${GITHUB_REF_NAME#v}"
+        run: ./packaging/build-appimage.sh
         env:
           ARCH: x86_64
 
       - name: Smoke test
         run: |
-          IMG="$(ls Upkeep-*-x86_64.AppImage | head -1)"
+          IMG="$UPKEEP_APPIMAGE"
+          ls -la "$IMG"
+          file "$IMG"
           chmod +x "$IMG"
           "$IMG" list
           # `self` exits 0 current, 10 newer, 1 no release yet / offline.
           "$IMG" self || [ $? -le 10 ]
 
       - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
