@@ -93,7 +93,13 @@ def print_table(rows, headers, aligns=None, max_width=None):
     sep_pad = 1
 
     def natural_widths():
-        return [max(len(headers[i]), *(len(c[i]) for c in cells)) for i in range(ncols)]
+        # The leading element keeps max() from being called with a single int
+        # when there are no rows: max(int) is a TypeError, and an empty table
+        # is exactly what a check where every app failed produces.
+        return [
+            max([len(headers[i])] + [len(c[i]) for c in cells])
+            for i in range(ncols)
+        ]
 
     widths = natural_widths()
     if max_width:

@@ -7,6 +7,7 @@ import json
 import re
 import urllib.request
 import urllib.error
+from datetime import datetime
 
 API_BASE = "https://api.github.com/repos/{repo}/releases/latest"
 DEFAULT_TIMEOUT = 10
@@ -23,32 +24,45 @@ def _request(url, timeout=DEFAULT_TIMEOUT):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status, resp.read()
+            return resp.status, resp.read(), resp.headers
     except urllib.error.HTTPError as e:
-        return e.code, e.read()
+        return e.code, e.read(), e.headers
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         raise GitHubError(f"Network error for {url}: {e}", kind="network")
+
+
+def _reset_hint(headers):
+    """When the hourly budget comes back, as 'at HH:MM'.
+
+    GitHub reports it in x-ratelimit-reset. Saying so beats the raw API error,
+    which names the caller's IP and suggests authenticating.
+    """
+    try:
+        reset = int(headers.get("x-ratelimit-reset", ""))
+    except (AttributeError, TypeError, ValueError):
+        return ""
+    when = datetime.fromtimestamp(reset).strftime("%H:%M")
+    return f", resets at {when}"
 
 
 def fetch_latest_release(repo, timeout=DEFAULT_TIMEOUT):
     repo = (repo or "").strip().lstrip("@/")
     if "/" not in repo:
         raise GitHubError(f"Invalid repo: {repo!r} (expected 'owner/repo')", kind="invalid")
-    status, body = _request(API_BASE.format(repo=repo), timeout=timeout)
+    status, body, headers = _request(API_BASE.format(repo=repo), timeout=timeout)
     if status == 200:
         try:
             return json.loads(body)
         except json.JSONDecodeError:
             raise GitHubError(f"Invalid JSON response from GitHub for {repo}", kind="invalid")
     if status == 403:
-        msg = "GitHub API rate limit reached. Try again later."
-        try:
-            data = json.loads(body)
-            if "message" in data:
-                msg = data["message"]
-        except Exception:
-            pass
-        raise GitHubError(msg, kind="rate_limit")
+        # Deliberately not GitHub's own wording: it names the caller's IP,
+        # repeats the same sentence for every app in the list and offers
+        # authentication that Upkeep deliberately does not use.
+        raise GitHubError(
+            "GitHub rate limit reached" + _reset_hint(headers) + ".",
+            kind="rate_limit",
+        )
     if status == 404:
         raise GitHubError(f"Repository '{repo}' not found or has no releases.", kind="not_found")
     raise GitHubError(f"GitHub responded with HTTP {status} for {repo}", kind="http")

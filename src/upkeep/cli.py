@@ -52,6 +52,7 @@ def cmd_check(cfg, args):
     errors = 0
     outdated = 0
     total = len(enabled)
+    stopped = ""
     try:
         for i, a in enumerate(enabled, 1):
             term.show_status(f"Checking for updates... [{i}/{total}] {a['name']}")
@@ -61,6 +62,12 @@ def cmd_check(cfg, args):
             if r.state == "error":
                 errors += 1
                 rows.append((name, a["repo"], term.red(r.message or "error")))
+                if r.kind == "rate_limit":
+                    # The hourly budget is spent for every IP, not per app: the
+                    # remaining requests would fail identically and take the
+                    # budget the other apps need. Stop here and say why.
+                    stopped = r.message
+                    break
             else:
                 if r.state in ("outdated", "missing"):
                     outdated += 1
@@ -68,9 +75,14 @@ def cmd_check(cfg, args):
                 rows.append((name, r.version or "-", remote or "-", status))
     finally:
         term.clear_status()
-    term.print_table([r for r in rows if len(r) == 4], ["App", "Local", "Remote", "Status"])
-    if errors:
-        term.print_table([r for r in rows if len(r) == 3], ["App", "Repo", "Error"])
+    ok_rows = [r for r in rows if len(r) == 4]
+    if ok_rows:
+        term.print_table(ok_rows, ["App", "Local", "Remote", "Status"])
+    err_rows = [r for r in rows if len(r) == 3]
+    if err_rows:
+        term.print_table(err_rows, ["App", "Repo", "Error"])
+    if stopped:
+        print(term.yellow(f"Stopped after {len(rows)} of {total} apps: {stopped}"))
     summary = f"{len(rows)} apps checked"
     if outdated:
         summary += f", {term.yellow(str(outdated) + ' to fix')}"

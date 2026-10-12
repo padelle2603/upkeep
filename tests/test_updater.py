@@ -1,6 +1,49 @@
 import pytest
+from unittest.mock import patch
 from upkeep import updater
+from upkeep.github import GitHubError
 from upkeep.updater import sanitize_name, write_desktop_entry
+
+
+class TestErrorKind:
+    """A rate limit is not a broken repo, and the CLI stops on the first one.
+
+    If the kind is lost on the way out of check_app, cmd_check cannot tell them
+    apart: it would keep spending requests that are already doomed.
+    """
+
+    def _check(self, kind):
+        app = {"name": "X", "repo": "o/r"}
+        with patch.object(updater, "latest_info", side_effect=GitHubError("m", kind=kind)):
+            with patch.object(updater.config, "read_local_version", return_value="1.0"):
+                return updater.check_app(app, {})
+
+    def test_rate_limit_is_labelled(self):
+        assert self._check("rate_limit").kind == "rate_limit"
+
+    def test_not_found_is_labelled(self):
+        assert self._check("not_found").kind == "not_found"
+
+    def test_network_is_labelled(self):
+        assert self._check("network").kind == "network"
+
+    def test_successful_check_has_no_kind(self):
+        app = {"name": "X", "repo": "o/r"}
+        info = {"tag": "v2.0", "asset_name": "", "download_url": "", "published_at": "", "html_url": ""}
+        with patch.object(updater, "latest_info", return_value=info):
+            with patch.object(updater.config, "read_local_version", return_value="1.0"):
+                with patch.object(updater.config, "app_target_path", return_value="/nonexistent"):
+                    result = updater.check_app(app, {})
+        assert result.state == "missing"
+        assert result.kind == ""
+
+    def test_update_app_propagates_the_kind(self):
+        app = {"name": "X", "repo": "o/r"}
+        with patch.object(updater, "latest_info", side_effect=GitHubError("m", kind="rate_limit")):
+            with patch.object(updater.config, "read_local_version", return_value="1.0"):
+                result = updater.update_app(app, {})
+        assert result.state == "error"
+        assert result.kind == "rate_limit"
 
 
 class TestSanitizeName:

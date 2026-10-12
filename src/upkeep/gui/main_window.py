@@ -556,23 +556,30 @@ class MainWindow(Gtk.ApplicationWindow):
 
         def worker():
             results = []
+            stopped = ""
             for row in rows:
                 try:
                     r = updater.check_app(row.app, self.cfg["settings"])
-                    results.append((row, r.state, r.info, r.message))
                 except Exception as e:
-                    results.append((row, "error", None, _describe_exception(e)))
-            GLib.idle_add(self.on_checks_done, results, auto)
+                    results.append((row, "error", None, _describe_exception(e), ""))
+                    continue
+                results.append((row, r.state, r.info, r.message, r.kind))
+                if r.kind == "rate_limit":
+                    # The hourly budget is per IP, so every remaining app would
+                    # fail identically and spend requests the others need.
+                    stopped = r.message
+                    break
+            GLib.idle_add(self.on_checks_done, results, auto, stopped)
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def on_checks_done(self, results, auto):
+    def on_checks_done(self, results, auto, stopped=""):
         self.set_busy(False)
         self.set_progress_pulse(False)
         self._checked = True
         outdated = 0
         errors = 0
-        for row, state, info, message in results:
+        for row, state, info, message, _kind in results:
             row.set_status(state, info, message)
             if state in ("outdated", "missing"):
                 outdated += 1
@@ -580,6 +587,11 @@ class MainWindow(Gtk.ApplicationWindow):
                 errors += 1
         self.set_last_check(check_summary(len(results), outdated, errors))
         self.update_summary()
+        if stopped:
+            # The footer persists, a notification does not: a check that stops
+            # for a reason the user cannot see looks like Upkeep is broken.
+            self.set_last_check(f"stopped · {stopped}")
+            self._notify("Upkeep: " + stopped)
         if auto and outdated:
             self._notify(f"{outdated} AppImage(s) to update")
         return False

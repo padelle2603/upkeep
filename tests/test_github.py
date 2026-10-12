@@ -39,6 +39,51 @@ class TestFetchLatestRelease:
 
     @patch("upkeep.github._request")
     def test_not_found(self, mock_req):
-        mock_req.return_value = (404, b'{"message": "Not Found"}')
+        mock_req.return_value = (404, b'{"message": "Not Found"}', {})
         with pytest.raises(GitHubError, match="not found"):
             fetch_latest_release("nonexistent/repo")
+
+
+class TestRateLimit:
+    """The 60/h budget is per IP, so a rate limit hits every app at once."""
+
+    def _mock(self, headers):
+        body = (
+            b'{"message": "API rate limit exceeded for 203.0.113.9. '
+            b'(But here\'s the good news: Authenticated requests get a '
+            b'higher rate limit.)"}'
+        )
+        return patch("upkeep.github._request", return_value=(403, body, headers))
+
+    def test_kind_is_rate_limit(self):
+        with self._mock({}):
+            with pytest.raises(GitHubError) as exc:
+                fetch_latest_release("owner/repo")
+        assert exc.value.kind == "rate_limit"
+
+    def test_reset_time_is_reported(self):
+        with self._mock({"x-ratelimit-reset": "1791807167"}):
+            with pytest.raises(GitHubError) as exc:
+                fetch_latest_release("owner/repo")
+        assert "resets at" in str(exc.value)
+
+    def test_github_wording_is_not_leaked(self):
+        """It names the caller's IP and pitches a token Upkeep will not use."""
+        with self._mock({}):
+            with pytest.raises(GitHubError) as exc:
+                fetch_latest_release("owner/repo")
+        message = str(exc.value)
+        assert "203.0.113.9" not in message
+        assert "Authenticated" not in message
+
+    def test_missing_header_does_not_crash(self):
+        with self._mock({}):
+            with pytest.raises(GitHubError) as exc:
+                fetch_latest_release("owner/repo")
+        assert str(exc.value).endswith(".")
+
+    def test_garbage_header_does_not_crash(self):
+        with self._mock({"x-ratelimit-reset": "not-a-number"}):
+            with pytest.raises(GitHubError) as exc:
+                fetch_latest_release("owner/repo")
+        assert str(exc.value).endswith(".")

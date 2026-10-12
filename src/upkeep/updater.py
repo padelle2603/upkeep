@@ -148,12 +148,15 @@ def latest_info(app, timeout=github.DEFAULT_TIMEOUT):
 
 
 class UpdateResult:
-    def __init__(self, app, state, message="", version=None, info=None):
+    def __init__(self, app, state, message="", version=None, info=None, kind=""):
         self.app = app
         self.state = state
         self.message = message
         self.version = version
         self.info = info
+        # Carries GitHubError.kind. A rate limit is not a broken repo, and the
+        # callers need to tell them apart: one stops the run, the other does not.
+        self.kind = kind
 
     @property
     def ok(self):
@@ -165,7 +168,7 @@ def check_app(app, settings, timeout=github.DEFAULT_TIMEOUT, progress_cb=None):
     try:
         info = latest_info(app, timeout=timeout)
     except github.GitHubError as e:
-        return UpdateResult(app, "error", str(e), local)
+        return UpdateResult(app, "error", str(e), local, kind=e.kind)
     if not os.path.exists(config.app_target_path(app)):
         return UpdateResult(app, "missing", "Executable not found", local, info)
     if local and not github.newer_than(local, info["tag"]):
@@ -208,7 +211,7 @@ def update_app(app, settings, timeout=github.DEFAULT_TIMEOUT, progress_cb=None, 
     try:
         info = latest_info(app, timeout=timeout)
     except github.GitHubError as e:
-        return UpdateResult(app, "error", str(e), local)
+        return UpdateResult(app, "error", str(e), local, kind=e.kind)
     target = config.app_target_path(app)
     missing = not os.path.exists(target)
     if not missing and local and not github.newer_than(local, info["tag"]):
@@ -223,7 +226,7 @@ def update_app(app, settings, timeout=github.DEFAULT_TIMEOUT, progress_cb=None, 
         config.write_local_version(app, settings, info["tag"])
         write_desktop_entry(app, settings)
     except github.GitHubError as e:
-        return UpdateResult(app, "error", str(e), local, info)
+        return UpdateResult(app, "error", str(e), local, info, kind=e.kind)
     return UpdateResult(app, "updated", "Updated to " + info["tag"], info["tag"], info)
 
 
