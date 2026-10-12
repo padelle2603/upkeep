@@ -145,13 +145,28 @@ def cli_command_path():
     return LOCAL_BIN / "upkeep"
 
 
-def cli_command_active():
-    """Whether the checkbox should start ticked: the filesystem, not the config.
+def cli_command_state():
+    """'absent' | 'linked' | 'foreign', read from the filesystem.
 
-    Reading the config instead would resurrect a symlink the user deleted by
-    hand the moment they opened Settings and pressed Save.
+    Not from the config: a setting would resurrect a symlink the user deleted
+    by hand the moment they reopened Settings. 'foreign' is the case where
+    something that is not ours sits at the path, and removing it is not ours
+    to do.
     """
-    return cli_command_path().is_symlink()
+    link = cli_command_path()
+    if link.is_symlink():
+        return "linked"
+    return "foreign" if link.exists() else "absent"
+
+
+def cli_command_target():
+    """What the link points at, or None when there is no link."""
+    if cli_command_state() != "linked":
+        return None
+    try:
+        return os.readlink(cli_command_path())
+    except OSError:
+        return None
 
 
 def path_warning():
@@ -179,6 +194,13 @@ def set_cli_command(enabled):
     link = cli_command_path()
     if not enabled:
         if not link.is_symlink():
+            # Say so when something is there: reporting success while leaving a
+            # file untouched is how the user ends up believing it is gone.
+            if link.exists():
+                return False, (
+                    f"{link} is not a symlink created by Upkeep, so it was "
+                    f"left untouched. Remove it yourself if you want it gone."
+                )
             return True, "No upkeep command in PATH."
         try:
             link.unlink()

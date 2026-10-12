@@ -115,11 +115,39 @@ class TestCliCommand:
         updater.set_cli_command(True)
         assert bin_dir.is_dir()
 
-    def test_active_reflects_the_filesystem(self, cli_env):
+    def test_state_reflects_the_filesystem(self, cli_env):
         bin_dir, _ = cli_env
-        assert updater.cli_command_active() is False
+        assert updater.cli_command_state() == "absent"
         updater.set_cli_command(True)
-        assert updater.cli_command_active() is True
+        assert updater.cli_command_state() == "linked"
+
+    def test_state_is_foreign_when_something_else_is_there(self, cli_env):
+        bin_dir, _ = cli_env
+        bin_dir.mkdir(parents=True)
+        (bin_dir / "upkeep").write_text("mine")
+        assert updater.cli_command_state() == "foreign"
+
+    def test_removal_refuses_a_foreign_file(self, cli_env):
+        bin_dir, _ = cli_env
+        bin_dir.mkdir(parents=True)
+        victim = bin_dir / "upkeep"
+        victim.write_text("mine")
+        ok, message = updater.set_cli_command(False)
+        assert ok is False
+        assert "not a symlink" in message
+        assert victim.read_text() == "mine"
+
+    def test_target_reports_the_link_destination(self, cli_env):
+        _, source = cli_env
+        assert updater.cli_command_target() is None
+        updater.set_cli_command(True)
+        assert updater.cli_command_target() == str(source)
+
+    def test_target_is_none_when_foreign(self, cli_env):
+        bin_dir, _ = cli_env
+        bin_dir.mkdir(parents=True)
+        (bin_dir / "upkeep").write_text("mine")
+        assert updater.cli_command_target() is None
 
     def test_removing_is_idempotent(self, cli_env):
         bin_dir, _ = cli_env

@@ -60,22 +60,30 @@ class SettingsDialog(Gtk.Dialog):
         self.create_desktop.set_active(bool(cfg["settings"].get("create_desktop", True)))
         box.pack_start(self.create_desktop, False, False, 0)
 
-        self.cli_command = Gtk.CheckButton(label="Add the upkeep command to PATH")
-        # State comes from the filesystem, not from a saved setting.
-        self.cli_command.set_active(updater.cli_command_active())
-        self.cli_command.set_sensitive(updater.running_appimage() is not None)
-        if updater.running_appimage() is None:
-            self.cli_command.set_tooltip_text(
-                "Only available when Upkeep runs from its AppImage."
-            )
-        self.cli_command.connect("toggled", self._cli_toggled)
-        box.pack_start(self.cli_command, False, False, 0)
-        cli_hint = Gtk.Label(
+        cli_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        cli_labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        title = Gtk.Label(label="Add the upkeep command to PATH", xalign=0)
+        cli_labels.pack_start(title, False, False, 0)
+        self.cli_status = Gtk.Label(xalign=0)
+        self.cli_status.get_style_context().add_class("dim-label")
+        cli_labels.pack_start(self.cli_status, False, False, 0)
+        cli_row.pack_start(cli_labels, True, True, 0)
+        self.cli_add = Gtk.Button(label="Add")
+        self.cli_add.get_style_context().add_class("ghost-btn")
+        self.cli_add.connect("clicked", self._cli_add_clicked)
+        cli_row.pack_start(self.cli_add, False, False, 0)
+        self.cli_remove = Gtk.Button(label="Remove")
+        self.cli_remove.get_style_context().add_class("ghost-btn")
+        self.cli_remove.connect("clicked", self._cli_remove_clicked)
+        cli_row.pack_start(self.cli_remove, False, False, 0)
+        box.pack_start(cli_row, False, False, 0)
+        cli_path = Gtk.Label(
             label=f"Runs Upkeep from a terminal as: {updater.cli_command_path()}",
             xalign=0,
         )
-        cli_hint.get_style_context().add_class("dim-label")
-        box.pack_start(cli_hint, False, False, 0)
+        cli_path.get_style_context().add_class("dim-label")
+        box.pack_start(cli_path, False, False, 0)
+        self._refresh_cli_state()
 
         arch_hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.x86_check = Gtk.CheckButton(label="x86_64")
@@ -109,37 +117,52 @@ class SettingsDialog(Gtk.Dialog):
             self.dir_entry.set_text(dlg.get_filename())
         dlg.destroy()
 
-    def _cli_toggled(self, cb):
-        """Act on the click, not on Save.
+    def _refresh_cli_state(self):
+        """Buttons follow the filesystem, so neither lies about what is there."""
+        state = updater.cli_command_state()
+        can_install = updater.running_appimage() is not None and state != "linked"
+        self.cli_add.set_sensitive(can_install)
+        # Only a link we created is ours to remove.
+        self.cli_remove.set_sensitive(state == "linked")
+        if state == "linked":
+            self.cli_status.set_text(f"Linked to {updater.cli_command_target()}")
+        elif state == "foreign":
+            self.cli_status.set_text(
+                f"{updater.cli_command_path()} holds a file that is not ours: left alone."
+            )
+        else:
+            self.cli_status.set_text("Not installed.")
+        if updater.running_appimage() is None:
+            self.cli_add.set_tooltip_text(
+                "Only available when Upkeep runs from its AppImage."
+            )
 
-        A switch that only takes effect when you close the dialog is a switch
-        that lies. The filesystem is the source of truth, so a failure puts
-        the box back where it was.
-        """
-        if getattr(self, "_cli_busy", False):
+    def _cli_add_clicked(self, _btn):
+        ok, message = updater.set_cli_command(True)
+        self._refresh_cli_state()
+        if not ok:
+            self._say(message, error=True)
             return
-        ok, message = updater.set_cli_command(cb.get_active())
-        if ok:
-            notes = []
-            if cb.get_active():
-                warning = updater.path_warning()
-                if warning:
-                    notes.append(warning)
-                if self._manages_itself():
-                    notes.append(
-                        "Upkeep is also in your managed apps, so its .desktop "
-                        "entry is rewritten on every update and will stop "
-                        "pointing at the upkeep command.\n\n"
-                        "Remove it with:  upkeep remove Upkeep\n"
-                        "You will still be told when a new version is out."
-                    )
-            if notes:
-                self._say("\n\n".join([message] + notes), warning=True)
-            return
-        self._cli_busy = True
-        cb.set_active(not cb.get_active())
-        self._cli_busy = False
-        self._say(message, error=True)
+        notes = []
+        warning = updater.path_warning()
+        if warning:
+            notes.append(warning)
+        if self._manages_itself():
+            notes.append(
+                "Upkeep is also in your managed apps, so its .desktop "
+                "entry is rewritten on every update and will stop "
+                "pointing at the upkeep command.\n\n"
+                "Remove it with:  upkeep remove Upkeep\n"
+                "You will still be told when a new version is out."
+            )
+        if notes:
+            self._say("\n\n".join([message] + notes), warning=True)
+
+    def _cli_remove_clicked(self, _btn):
+        ok, message = updater.set_cli_command(False)
+        self._refresh_cli_state()
+        if not ok:
+            self._say(message, error=True)
 
     def _manages_itself(self):
         """True when Upkeep also sits in its own config as a managed app.
