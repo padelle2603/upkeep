@@ -109,11 +109,34 @@ def _btn_with_icon(label, icon, classes=()):
     return btn
 
 
+def _plural(n, singular, plural=None):
+    return f"{n} {singular if n == 1 else (plural or singular + 's')}"
+
+
+def check_summary(total, outdated, errors):
+    """Human-readable outcome of a check, shown in the footer so the user always sees a result."""
+    if not total:
+        return "no apps to check"
+    parts = [_plural(total, "app")]
+    if outdated:
+        parts.append(f"{_plural(outdated, 'update')} available")
+    elif not errors:
+        parts.append("all up to date")
+    if errors:
+        parts.append(_plural(errors, "error"))
+    return "  ·  ".join(parts)
+
+
+def _describe_exception(exc):
+    return f"{type(exc).__name__}: {exc}"
+
+
 class AppRow(Gtk.ListBoxRow):
     def __init__(self, app, settings, on_update, on_edit, on_delete):
         super().__init__()
         self.app = app
         self.status = "unknown"
+        self.message = ""
         self.local_version = ""
         self.remote_tag = None
         self.installed = False
@@ -197,8 +220,9 @@ class AppRow(Gtk.ListBoxRow):
         self._apply_status()
         self._update_sub()
 
-    def set_status(self, status, info=None):
+    def set_status(self, status, info=None, message=""):
         self.status = status
+        self.message = message or ""
         if info and info.get("tag"):
             self.remote_tag = info["tag"]
         self._apply_status()
@@ -219,11 +243,18 @@ class AppRow(Gtk.ListBoxRow):
             self.update_btn.set_sensitive(False)
             self._set_pill("Disabled", "pill-disabled")
             self._set_dot("dot-neutral")
+            self._set_reason("")
             return
         ctx.remove_class("disabled")
         self.update_btn.set_sensitive(True)
         self._set_pill(STATE_LABEL.get(self.status, ""), PILL_CLASS.get(self.status, ""))
         self._set_dot(DOT_CLASS.get(self.status, "dot-neutral"))
+        self._set_reason(self.message if self.status in ("error", "missing") else "")
+
+    def _set_reason(self, text):
+        """Surface the reason (rate limit, missing file, ...) without breaking the layout."""
+        self.status_label.set_tooltip_text(text)
+        self.set_tooltip_text(text)
 
     def _set_pill(self, text, cls):
         sc = self.status_label.get_style_context()
@@ -449,9 +480,9 @@ class MainWindow(Gtk.ApplicationWindow):
             for row in rows:
                 try:
                     r = updater.check_app(row.app, self.cfg["settings"])
-                    results.append((row, r.state, r.info))
-                except Exception:
-                    results.append((row, "error", None))
+                    results.append((row, r.state, r.info, r.message))
+                except Exception as e:
+                    results.append((row, "error", None, _describe_exception(e)))
             GLib.idle_add(self.on_checks_done, results, auto)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -460,12 +491,15 @@ class MainWindow(Gtk.ApplicationWindow):
         self.set_busy(False)
         self.set_progress_pulse(False)
         self._checked = True
-        self.set_last_check()
         outdated = 0
-        for row, state, info in results:
-            row.set_status(state, info)
-            if state == "outdated":
+        errors = 0
+        for row, state, info, message in results:
+            row.set_status(state, info, message)
+            if state in ("outdated", "missing"):
                 outdated += 1
+            elif state == "error":
+                errors += 1
+        self.set_last_check(check_summary(len(results), outdated, errors))
         self.update_summary()
         if auto and outdated:
             self._notify(f"{outdated} AppImage(s) to update")
@@ -497,9 +531,9 @@ class MainWindow(Gtk.ApplicationWindow):
                     if r.state in ("outdated", "missing"):
                         outdated.append((row, r.info, r.state == "missing"))
                     else:
-                        GLib.idle_add(self.on_row_done, row, r.state, r.info)
-                except Exception:
-                    GLib.idle_add(self.on_row_done, row, "error", None)
+                        GLib.idle_add(self.on_row_done, row, r.state, r.info, r.message)
+                except Exception as e:
+                    GLib.idle_add(self.on_row_done, row, "error", None, _describe_exception(e))
             GLib.idle_add(self._confirm_download, outdated)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -535,13 +569,11 @@ class MainWindow(Gtk.ApplicationWindow):
                     GLib.idle_add(self.set_progress_frac, frac, f"Download: {row.app['name']}")
                 try:
                     r = updater.update_app(row.app, self.cfg["settings"], progress_cb=progress_cb, confirm_fn=None)
-                    state = r.state
-                    info = r.info
-                except Exception:
-                    state = "error"
-                    info = None
+                    state, info, message = r.state, r.info, r.message
+                except Exception as e:
+                    state, info, message = "error", None, _describe_exception(e)
                 progress[0] += 1
-                GLib.idle_add(self.on_row_done, row, state, info)
+                GLib.idle_add(self.on_row_done, row, state, info, message)
             GLib.idle_add(self.on_updates_done)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -564,8 +596,8 @@ class MainWindow(Gtk.ApplicationWindow):
         dlg.destroy()
         return resp == Gtk.ResponseType.YES
 
-    def on_row_done(self, row, state, info=None):
-        row.set_status(state, info)
+    def on_row_done(self, row, state, info=None, message=""):
+        row.set_status(state, info, message)
         self._checked = True
         self.update_summary()
         return False
@@ -579,9 +611,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self._notify(message)
         return False
 
-    def set_last_check(self):
+    def set_last_check(self, summary=""):
         now = time.strftime("%H:%M")
-        self.last_check_label.set_text(f"Last check: {now}")
+        text = f"Last check: {now}"
+        if summary:
+            text += f"  ·  {summary}"
+        self.last_check_label.set_text(text)
 
     def set_progress_frac(self, frac, text=""):
         self.progress.set_fraction(max(0.0, min(1.0, frac)))
