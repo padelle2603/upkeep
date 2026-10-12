@@ -63,6 +63,16 @@ class TestNormalizeApp:
         result = normalize_app(app)
         assert result["enabled"] is True
 
+    def test_create_desktop_default(self):
+        app = {"name": "App", "repo": "a/b"}
+        result = normalize_app(app)
+        assert result["create_desktop"] is True
+
+    def test_create_desktop_opt_out_preserved(self):
+        app = {"name": "App", "repo": "a/b", "create_desktop": False}
+        result = normalize_app(app)
+        assert result["create_desktop"] is False
+
 
 class TestConfigRoundtrip:
     def test_save_and_load(self, tmp_path, monkeypatch):

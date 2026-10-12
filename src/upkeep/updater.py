@@ -86,11 +86,8 @@ def _extract_appimage_icon(app_image, name):
 
 
 def write_desktop_entry(app, settings):
-    try:
-        create = settings.get("create_desktop", True)
-    except AttributeError:
-        create = True
-    if not create:
+    # The global setting is a master switch; a per-app flag can opt a single app out.
+    if not settings.get("create_desktop", True) or not app.get("create_desktop", True):
         return None
     target = config.app_target_path(app)
     if not os.path.exists(target):

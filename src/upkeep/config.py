@@ -41,6 +41,7 @@ def normalize_app(app):
         d["arch"] = DEFAULT_ARCH
     d["auto_update"] = bool(d.get("auto_update", False))
     d["enabled"] = bool(d.get("enabled", True))
+    d["create_desktop"] = bool(d.get("create_desktop", True))
     return d
 
 

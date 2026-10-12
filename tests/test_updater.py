@@ -72,6 +72,22 @@ class TestWriteDesktopEntry:
         assert write_desktop_entry(app, {"create_desktop": False}) is None
         assert not (updater.DESKTOP_DIR / "cheat-engine.desktop").exists()
 
+    def test_respects_per_app_opt_out(self, desktop_env):
+        app, _ = desktop_env
+        assert write_desktop_entry({**app, "create_desktop": False}, {}) is None
+        assert not (updater.DESKTOP_DIR / "cheat-engine.desktop").exists()
+
+    def test_global_false_wins_over_per_app_true(self, desktop_env):
+        app, _ = desktop_env
+        result = write_desktop_entry({**app, "create_desktop": True}, {"create_desktop": False})
+        assert result is None
+        assert not (updater.DESKTOP_DIR / "cheat-engine.desktop").exists()
+
+    def test_per_app_true_creates_entry(self, desktop_env):
+        app, _ = desktop_env
+        result = write_desktop_entry({**app, "create_desktop": True}, {})
+        assert result == str(updater.DESKTOP_DIR / "cheat-engine.desktop")
+
     def test_skips_missing_executable(self, desktop_env):
         app, exe = desktop_env
         exe.unlink()
