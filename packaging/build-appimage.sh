@@ -1,7 +1,8 @@
 #!/bin/bash
 # Build a portable Upkeep AppImage.
 #
-# What goes in: CPython, PyGObject, GTK3, the typelibs Upkeep actually uses.
+# What goes in: CPython, PyGObject, GTK3, the typelibs Upkeep actually uses,
+# plus every non-Python file the GUI loads at runtime.
 # What does NOT: every icon theme and every locale on the build machine.
 # PyInstaller happily copies whatever /usr/share holds — on a desktop with
 # Papirus and breeze installed that is ~520 MB of icons on its own. We keep
@@ -34,6 +35,7 @@ pyinstaller \
     --specpath "${BUNDLE}" \
     --paths src \
     --add-data "$PWD/icons:icons" \
+    --add-data "$PWD/src/upkeep/gui/style.css:upkeep/gui" \
     --hidden-import upkeep.gui.main_window \
     --hidden-import upkeep.gui.app_dialog \
     --hidden-import upkeep.gui.settings_dialog \
@@ -82,6 +84,18 @@ export GIT_SSL_CAINFO="$SSL_CERT_FILE"
 exec "$HERE/usr/bin/upkeep" "$@"
 RUNNER
 chmod +x "${APPDIR}/AppRun" "${APPDIR}/usr/bin/upkeep"
+
+# A GUI asset that never made it into the freeze is invisible from here: the
+# smoke tests below run --help and self, neither of which opens a window.
+# _load_css() returns False when the file is missing and the app simply comes
+# up unstyled, so prove the file is in the bundle instead of trusting the
+# --add-data list. Searched by tail rather than by full path: the layout under
+# _internal is PyInstaller's to choose, and an assert that names it would blame
+# a missing css for a directory that simply moved.
+find "${APPDIR}/usr/bin" -path '*/upkeep/gui/style.css' -print -quit | grep -q . || {
+    echo "upkeep/gui/style.css is missing from the freeze: the AppImage would open unstyled" >&2
+    exit 1
+}
 
 echo "==> Smoke test..."
 "${APPDIR}/AppRun" --help >/dev/null
