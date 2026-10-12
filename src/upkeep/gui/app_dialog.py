@@ -107,6 +107,17 @@ class AppDialog(Gtk.Dialog):
         self.enabled_check.set_active(bool(app.get("enabled", True) if app else True))
         box.pack_start(self.enabled_check, False, False, 0)
 
+        global_desktop = bool(cfg["settings"].get("create_desktop", True))
+        self.desktop_check = Gtk.CheckButton(label="Create a .desktop entry for this app")
+        if app:
+            self.desktop_check.set_active(bool(app.get("create_desktop", True)))
+        else:
+            self.desktop_check.set_active(global_desktop)
+        if not global_desktop:
+            self.desktop_check.set_sensitive(False)
+            self.desktop_check.set_tooltip_text("Disabled by the 'create_desktop' setting")
+        box.pack_start(self.desktop_check, False, False, 0)
+
         self.test_label = Gtk.Label(label="", xalign=0, wrap=True)
         self.test_label.set_justify(Gtk.Justification.LEFT)
         box.pack_start(self.test_label, False, False, 0)
@@ -203,6 +214,7 @@ class AppDialog(Gtk.Dialog):
             "arch": self._selected_arch(),
             "auto_update": self.auto_check.get_active(),
             "enabled": self.enabled_check.get_active(),
+            "create_desktop": self.desktop_check.get_active(),
         })
         for i, a in enumerate(self.cfg["apps"]):
             if a["name"] == self.app.get("name") or a["name"] == app["name"]:

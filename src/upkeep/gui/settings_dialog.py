@@ -54,7 +54,7 @@ class SettingsDialog(Gtk.Dialog):
         self.confirm.set_active(bool(cfg["settings"].get("confirm_download", True)))
         box.pack_start(self.confirm, False, False, 0)
 
-        self.create_desktop = Gtk.CheckButton(label="Create a .desktop entry for every installed/updated app")
+        self.create_desktop = Gtk.CheckButton(label="Create a .desktop entry for every app (can be overridden per app)")
         self.create_desktop.set_active(bool(cfg["settings"].get("create_desktop", True)))
         box.pack_start(self.create_desktop, False, False, 0)
 
