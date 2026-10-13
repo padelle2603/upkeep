@@ -97,6 +97,19 @@ find "${APPDIR}/usr/bin" -path '*/upkeep/gui/style.css' -print -quit | grep -q .
     exit 1
 }
 
+# librsvg2-bin ships rsvg-convert, librsvg2-common ships the SVG support for
+# gdk-pixbuf, and they are different packages. Without one of the two every SVG
+# icon in the bundle is unreachable and GTK draws the missing-image box instead:
+# the title icon, the window buttons, the refresh/plus/trash buttons. Nothing
+# above prints a warning, so prove the freeze can render SVG at all. Which of
+# the two carries it depends on the distro (Debian ships a loader module,
+# gdk-pixbuf 2.42+ registers the format itself), so accept either.
+find "${APPDIR}/usr/bin" \( -name 'libpixbufloader-svg.so' -o -name 'librsvg-2.so*' \) \
+    -print -quit | grep -q . || {
+    echo "no SVG support in the freeze (librsvg missing): install librsvg2-common, or every SVG icon renders as a box" >&2
+    exit 1
+}
+
 echo "==> Smoke test..."
 "${APPDIR}/AppRun" --help >/dev/null
 # `self` exits 0 (current), 10 (newer release) or 1 (no release yet / offline).
