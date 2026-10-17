@@ -97,6 +97,25 @@ works distributed by their own authors under their own licenses. Upkeep's
 licensing has no effect on the licensing of the software it manages, and vice
 versa.
 
+### Third-party code inside the AppImage
+
+The AppImage carries one third-party asset, kept verbatim and unmodified under
+the license it was published with:
+
+| Asset | Version | License | Purpose |
+|---|---|---|---|
+| `adw-gtk3` GTK theme (`packaging/themes/adw-gtk3`) | 6.5 | LGPL-2.1-only | the window's look; a stylesheet, no code is linked |
+
+The theme is the unofficial GTK3 port of the libadwaita theme by Lasse König
+and contributors, from <https://github.com/lassekongo83/adw-gtk3>. Its license
+text is shipped next to the files in the repository and inside the AppImage,
+in `usr/share/doc/upkeep/adw-gtk3-LICENSE`, as LGPL-2.1 requires. See
+`packaging/themes/adw-gtk3/ORIGIN.md` for provenance and for how to update it.
+
+No other third-party code is bundled: the AppImage is built from Upkeep's own
+sources plus the CPython, PyGObject and GTK3 runtime it links against, which
+carry their own licenses.
+
 ## 7. No warranty
 
 Upkeep is distributed in the hope that it will be useful, **but WITHOUT ANY

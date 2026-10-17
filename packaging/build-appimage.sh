@@ -51,6 +51,22 @@ fi
 if [ -d "${SHARE}/locale" ]; then
     find "${SHARE}/locale" -mindepth 1 -maxdepth 1 ! -name en -exec rm -rf {} +
 fi
+# GTK themes: the app asks for adw-gtk3 (gui/theme.py) and falls back to
+# whatever else is there, so the bundle decides how Upkeep looks. Ours goes
+# in first and the rest goes out: without this the AppImage inherits the
+# theme of whoever happened to run the build, which makes the artifact look
+# different depending on the machine and fatten it by megabytes.
+echo "==> Installing the bundled GTK theme..."
+THEME_SRC="packaging/themes/adw-gtk3"
+[ -f "${THEME_SRC}/gtk-3.0/gtk.css" ] || {
+    echo "${THEME_SRC}/gtk-3.0/gtk.css is missing: the AppImage would fall back to the system theme" >&2
+    exit 1
+}
+rm -rf "${SHARE}/themes"
+mkdir -p "${SHARE}/themes"
+cp -r "${THEME_SRC}" "${SHARE}/themes/adw-gtk3"
+echo "    GTK theme: adw-gtk3 (bundled)"
+
 # On Arch an SVG is drawn by glycin, a plugin that dlopens librsvg at runtime,
 # and PyInstaller only follows link-time dependencies, so it collects neither.
 # Copy the plugin and the library it needs. On Debian and Ubuntu this finds
@@ -85,6 +101,9 @@ rsvg-convert -w 256 -h 256 -o "${APPDIR}/upkeep.png" icons/upkeep.svg 2>/dev/nul
     || cp icons/upkeep.svg "${APPDIR}/upkeep.png"
 cp packaging/upkeep.desktop "${APPDIR}/upkeep.desktop"
 cp README.md LEGAL.md PRIVACY.md "${APPDIR}/usr/share/doc/upkeep/"
+# The theme is third-party LGPL code: whoever receives the binary receives its
+# license too, not just the repository.
+cp "${THEME_SRC}/LICENSE" "${APPDIR}/usr/share/doc/upkeep/adw-gtk3-LICENSE"
 
 # The CA store ships with the app. The frozen libcrypto cannot be relied on to
 # find the host's: with it missing, TLS verification fails with "unable to get
@@ -102,6 +121,12 @@ HERE="$(dirname "$(readlink -f "$0")")"
 export APPDIR="$HERE"
 export SSL_CERT_FILE="$HERE/usr/share/ca-certificates/ca-certificates.crt"
 export GIT_SSL_CAINFO="$SSL_CERT_FILE"
+# GTK looks for themes in XDG_DATA_DIRS, and gui/theme.py looks in the same
+# place. The bundle's own share directory goes first so the app uses the theme
+# it ships whatever the host has; the host's directories stay behind it so a
+# missing bundled theme still finds the system one.
+export XDG_DATA_DIRS="$HERE/usr/bin/_internal/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
+export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 exec "$HERE/usr/bin/upkeep" "$@"
 RUNNER
 chmod +x "${APPDIR}/AppRun" "${APPDIR}/usr/bin/upkeep"
@@ -128,6 +153,15 @@ find "${APPDIR}/usr/bin" -path '*/upkeep/gui/style.css' -print -quit | grep -q .
 find "${APPDIR}/usr/bin" \( -name 'libpixbufloader-svg.so' -o -name 'librsvg-2.so*' \) \
     -print -quit | grep -q . || {
     echo "no SVG support in the freeze (librsvg missing): install librsvg2-common, or every SVG icon renders as a box" >&2
+    exit 1
+}
+
+# The theme is installed into the freeze before the AppDir is assembled, and a
+# theme that did not travel is invisible in the same way an icon theme is:
+# theme.py falls back to the host's theme, so the AppImage would simply look
+# different from one machine to the next, with nothing printed anywhere.
+[ -f "${APPDIR}/usr/bin/_internal/share/themes/adw-gtk3/gtk-3.0/gtk.css" ] || {
+    echo "the bundled adw-gtk3 theme did not reach the AppDir: the AppImage would fall back to the host theme" >&2
     exit 1
 }
 
