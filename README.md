@@ -27,6 +27,10 @@ No installer, no `sudo`, no Python environment: the AppImage carries Python,
 PyGObject and GTK3. Run it with arguments for the CLI (`./Upkeep-*.AppImage
 list`), without for the GUI.
 
+The AppImage also carries the `adw-gtk3` theme (LGPL-2.1, see
+[LEGAL.md](LEGAL.md)), so the window looks the same on every distribution.
+Running from source instead uses the theme installed on the system, if any.
+
 ## Uninstall
 
 Delete the AppImage file. Your configuration lives in `~/.config/upkeep/` and
@@ -51,7 +55,7 @@ When an AppImage is installed or updated, a menu entry
 to the AppImage and the icon extracted from the AppImage itself (fallback to
 a generic icon). The entry is removed if the app is deleted. Can be disabled
 globally with the `create_desktop` setting (default `true`), and per app with
-the "Create a .desktop entry for this app" checkbox in the add/edit dialog or
+the "Create a .desktop entry for this app" switch in the add/edit dialog or
 with `upkeep add --no-desktop`.
 
 ## CLI

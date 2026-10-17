@@ -1,16 +1,22 @@
 /* =============================================================
-   Upkeep - custom theme (light/dark aware)
+   Upkeep - what the GTK theme does not do for us
+
+   The GTK3 theme provides corners, padding, flat buttons, header
+   bar and dark mode. This file only adds what an app has to decide
+   for itself: the accent colour of a filled button, the status
+   pills, the row rhythm and the focus ring.
+
+   Colours that GTK provides (@theme_bg_color, @theme_fg_color)
+   follow the light/dark scheme; the status colours below are the
+   few that have to be legible in both.
    ============================================================= */
 
 @define-color accent #6366f1;
-@define-color accent2 #06b6d4;
-@define-color ok #34d399;
-@define-color warn #fbbf24;
-@define-color err #f87171;
-@define-color neutral #94a3b8;
+@define-color ok #2ec27e;
+@define-color warn #e5a50a;
+@define-color err #e01b24;
 
 @define-color bg @theme_bg_color;
-@define-color base @theme_base_color;
 @define-color fg @theme_fg_color;
 
 /* ---------- Window ---------- */
@@ -19,12 +25,6 @@
 }
 
 /* ---------- HeaderBar ---------- */
-.app-window headerbar {
-    background-image: linear-gradient(to bottom, shade(@bg, 1.08), shade(@bg, 1.02));
-    border-bottom: 1px solid alpha(@fg, 0.08);
-    min-height: 46px;
-}
-
 .header-title {
     font-size: 14px;
     font-weight: 700;
@@ -37,159 +37,160 @@
 }
 
 /* ---------- Buttons ---------- */
-.primary-btn {
-    background-image: linear-gradient(to bottom, @accent2, @accent);
+/* The theme's suggested-action blends towards white, which reads as a
+   grey pill. Fill it with the app accent instead. Do not pair this with
+   .flat: .suggested-action.flat is transparent by design. */
+button.suggested-action {
+    background-image: none;
     background-color: @accent;
     color: #ffffff;
     border: 0;
-    border-radius: 6px;
-    padding: 5px 14px;
-    box-shadow: 0 1px 3px alpha(#000, 0.25);
-    text-shadow: none;
-    transition: background-color 120ms ease, color 120ms ease;
-}
-
-.primary-btn:hover {
-    background-image: linear-gradient(to bottom, lighter(@accent2), lighter(@accent));
-}
-
-.primary-btn:active {
-    background-image: linear-gradient(to bottom, darker(@accent), darker(@accent));
-    box-shadow: inset 0 1px 3px alpha(#000, 0.25);
-}
-
-.primary-btn:disabled {
-    background-image: none;
-    background-color: alpha(@accent, 0.35);
-    color: alpha(#ffffff, 0.55);
+    border-radius: 999px;
     box-shadow: none;
+    padding: 6px 16px;
+    font-weight: 700;
 }
 
-.ghost-btn {
-    background-image: none;
-    background-color: alpha(@fg, 0.05);
-    border: 1px solid alpha(@fg, 0.18);
-    border-radius: 6px;
-    color: @fg;
-    padding: 4px 12px;
-    transition: background-color 120ms ease, border-color 120ms ease;
+button.suggested-action:hover {
+    background-color: shade(@accent, 1.12);
 }
 
-.ghost-btn:hover {
-    background-color: alpha(@fg, 0.10);
-    border-color: alpha(@fg, 0.30);
+button.suggested-action:active {
+    background-color: shade(@accent, 0.86);
 }
 
-.ghost-btn:active {
-    background-color: alpha(@fg, 0.16);
+button.suggested-action:disabled,
+button.suggested-action:disabled:hover,
+button.suggested-action:disabled:active {
+    background-color: alpha(@accent, 0.35);
+    color: alpha(#ffffff, 0.65);
 }
 
-.icon-btn {
+button.flat {
+    padding: 6px 12px;
+    border-radius: 999px;
+}
+
+/* One action per row, quiet unless the row has something to do. */
+button.row-action {
     background-image: none;
     background-color: transparent;
     border: 0;
-    border-radius: 6px;
-    padding: 4px;
-    min-width: 0;
-    min-height: 0;
+    border-radius: 999px;
     box-shadow: none;
-    color: alpha(@fg, 0.85);
-    transition: background-color 120ms ease, color 120ms ease;
+    margin: 0;
+    padding: 6px;
+    min-width: 28px;
+    min-height: 28px;
+    color: alpha(@fg, 0.75);
 }
 
-.icon-btn:hover {
-    background-color: alpha(@fg, 0.12);
+button.row-action:hover {
+    background-color: alpha(@fg, 0.10);
     color: @fg;
 }
 
-.icon-btn:active {
-    background-color: alpha(@fg, 0.18);
+button.row-action:active {
+    background-color: alpha(@fg, 0.16);
 }
 
-.icon-btn.danger:hover {
-    background-color: alpha(@err, 0.18);
-    color: @err;
+button.row-action.urge {
+    background-color: alpha(@accent, 0.18);
+    color: @accent;
 }
 
-.update-btn {
-    background-image: linear-gradient(to bottom, shade(@accent, 1.06), @accent);
-    background-color: @accent;
-    color: #ffffff;
-    border: 0;
-    border-radius: 6px;
-    padding: 4px 8px;
-    box-shadow: 0 1px 2px alpha(#000, 0.20);
-    transition: background-color 120ms ease, color 120ms ease;
+button.row-action.urge:hover {
+    background-color: alpha(@accent, 0.28);
+    color: shade(@accent, 1.1);
 }
 
-.update-btn:hover {
-    background-image: linear-gradient(to bottom, lighter(@accent2), lighter(@accent));
+button.row-action:disabled {
+    background-color: transparent;
+    color: alpha(@fg, 0.3);
 }
 
-.update-btn:active {
-    background-image: linear-gradient(to bottom, darker(@accent), darker(@accent));
-    box-shadow: inset 0 1px 2px alpha(#000, 0.25);
-}
-
-.update-btn:disabled {
-    background-image: none;
-    background-color: alpha(@accent, 0.35);
-    color: alpha(#ffffff, 0.5);
-    box-shadow: none;
-}
-
-/* ---------- Summary bar ---------- */
-.summary-strip {
-    margin: 10px 12px 4px 12px;
-}
-
-.stat-card {
-    background-color: @base;
-    border: 1px solid alpha(@fg, 0.09);
-    border-radius: 10px;
+/* ---------- Action bar ---------- */
+.action-bar {
     padding: 8px 14px;
+    border-bottom: 1px solid alpha(@fg, 0.07);
 }
 
-.stat-value {
-    font-size: 20px;
-    font-weight: 700;
-    color: @fg;
-}
-
-.stat-value.accent-ok { color: @ok; }
-.stat-value.accent-warn { color: @warn; }
-.stat-value.accent-err { color: @err; }
-
-.stat-label {
+.status-label {
     font-size: 11px;
     color: alpha(@fg, 0.55);
 }
 
-/* ---------- List (card) ---------- */
-.app-list {
-    padding: 2px 10px 8px 10px;
+progressbar {
+    background-color: transparent;
+    border: 0;
+    box-shadow: none;
+    min-height: 4px;
 }
 
-.app-card {
-    background-color: @base;
-    border: 1px solid alpha(@fg, 0.09);
-    border-radius: 10px;
-    margin: 4px 0;
+progressbar trough {
+    background-color: transparent;
+    border: 0;
+    border-radius: 0;
+    min-height: 4px;
+}
+
+progressbar trough progress {
+    background-image: none;
+    background-color: @accent;
+    border-radius: 0;
+    min-height: 4px;
+}
+
+/* ---------- Banner ---------- */
+/* Replaces the notification that vanished before it was read: a check
+   that stopped, or a pile of updates waiting. */
+.banner {
+    margin: 10px 14px 0 14px;
+    padding: 7px 8px 7px 14px;
+    border-radius: 12px;
+    background-color: alpha(@accent, 0.14);
+}
+
+.banner label {
+    font-size: 13px;
+    color: @fg;
+}
+
+.banner button.suggested-action {
+    padding: 4px 12px;
+    font-weight: 600;
+}
+
+/* ---------- App rows ---------- */
+.app-list {
+    padding: 6px 10px 10px 10px;
+}
+
+.app-row {
+    border-radius: 12px;
+    margin: 1px 0;
+    /* Always a 2px border, transparent until focus: GTK3 draws no outline
+       or box-shadow on a list row, and a ring that only appears on focus
+       must not push the row's contents sideways. */
+    border: 2px solid transparent;
     transition: background-color 120ms ease, border-color 120ms ease;
 }
 
-.app-card:hover {
-    border-color: alpha(@accent, 0.45);
-    background-color: shade(@base, 1.02);
+.app-row:hover {
+    background-color: alpha(@fg, 0.05);
 }
 
-.app-card:selected {
-    background-color: alpha(@accent, 0.12);
-    border-color: alpha(@accent, 0.55);
+.app-row:selected {
+    background-color: alpha(@accent, 0.10);
 }
 
-.app-card.disabled {
-    opacity: 0.55;
+.app-row:focus {
+    background-color: alpha(@accent, 0.10);
+    border-color: @accent;
+}
+
+.app-row.disabled {
+    opacity: 0.5;
 }
 
 .app-name {
@@ -200,93 +201,83 @@
 
 .app-repo {
     font-size: 11px;
-    color: alpha(@fg, 0.55);
+    color: alpha(@fg, 0.5);
 }
 
 .app-sub {
     font-size: 12px;
-    color: alpha(@fg, 0.70);
-}
-
-.app-path {
-    font-size: 11px;
-    color: alpha(@fg, 0.45);
+    color: alpha(@fg, 0.68);
 }
 
 /* ---------- Status pill ---------- */
 .status-pill {
-    padding: 2px 10px;
+    padding: 3px 10px;
     border-radius: 999px;
     font-size: 11px;
-    font-weight: 600;
-    background-color: alpha(@neutral, 0.15);
-    color: @neutral;
+    font-weight: 700;
 }
 
 .pill-ok {
     background-color: alpha(@ok, 0.16);
-    color: @ok;
+    color: shade(@ok, 0.70);
 }
 
 .pill-warn {
     background-color: alpha(@warn, 0.18);
-    color: @warn;
+    color: shade(@warn, 0.72);
 }
 
 .pill-err {
     background-color: alpha(@err, 0.16);
-    color: @err;
+    color: shade(@err, 0.85);
 }
 
 .pill-pending {
-    background-color: alpha(@accent, 0.18);
+    background-color: alpha(@accent, 0.16);
     color: @accent;
 }
 
 .pill-disabled {
-    background-color: alpha(@neutral, 0.12);
-    color: alpha(@neutral, 0.70);
+    background-color: alpha(@fg, 0.07);
+    color: alpha(@fg, 0.55);
 }
 
-/* ---------- Status dot ---------- */
-.dot-ok { color: @ok; }
-.dot-warn { color: @warn; }
-.dot-err { color: @err; }
-.dot-accent { color: @accent; }
-.dot-neutral { color: @neutral; }
+/* ---------- Context menu ---------- */
+menuitem.destructive-action {
+    color: @err;
+}
 
 /* ---------- Empty state ---------- */
 .empty-title {
-    font-size: 18px;
+    font-size: 19px;
     font-weight: 700;
     color: @fg;
 }
 
 .empty-sub {
     font-size: 13px;
-    color: alpha(@fg, 0.60);
+    color: alpha(@fg, 0.6);
 }
 
-/* ---------- Footer ---------- */
-.footer-label {
+/* ---------- Dialogs ---------- */
+.section-title {
     font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
     color: alpha(@fg, 0.55);
 }
 
-progressbar trough {
-    border-radius: 6px;
-    background-color: alpha(@fg, 0.12);
-    min-height: 10px;
-    border: 0;
+.field-label {
+    font-size: 13px;
+    color: alpha(@fg, 0.85);
 }
 
-progressbar trough progress {
-    background-image: linear-gradient(to bottom, @accent2, @accent);
-    background-color: @accent;
-    border-radius: 6px;
+.switch-label {
+    font-size: 13px;
+    color: @fg;
 }
 
-progressbar text {
+.hint-label {
     font-size: 11px;
-    color: alpha(@fg, 0.75);
+    color: alpha(@fg, 0.55);
 }

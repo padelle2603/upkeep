@@ -13,6 +13,8 @@ from .. import config
 from .. import updater
 from .. import github
 
+from .widgets import browse_button, field, section, switch_row, use_header
+
 
 class AppDialog(Gtk.Dialog):
     def __init__(self, parent, cfg, app=None):
@@ -27,31 +29,27 @@ class AppDialog(Gtk.Dialog):
         self.app = app or {}
 
         box = self.get_content_area()
-        box.set_spacing(8)
-        box.set_margin_top(12)
-        box.set_margin_bottom(12)
+        box.set_spacing(6)
+        box.set_margin_top(4)
+        box.set_margin_bottom(14)
         box.set_margin_start(16)
         box.set_margin_end(16)
 
-        def add_field(label, widget):
-            hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            lab = Gtk.Label(label=label, xalign=0)
-            lab.set_size_request(140, -1)
-            hb.pack_start(lab, False, False, 0)
-            hb.pack_start(widget, True, True, 0)
-            box.pack_start(hb, False, False, 0)
+        box.pack_start(section("Repository"), False, False, 0)
 
         self.name_entry = Gtk.Entry()
         self.name_entry.set_placeholder_text("e.g. waywallen")
         if app:
             self.name_entry.set_text(app.get("name", ""))
-        add_field("Name", self.name_entry)
+        box.pack_start(field("Name", self.name_entry), False, False, 0)
 
         self.repo_entry = Gtk.Entry()
         self.repo_entry.set_placeholder_text("https://github.com/owner/repo  or  owner/repo")
         if app:
             self.repo_entry.set_text(app.get("repo", ""))
-        add_field("GitHub repo", self.repo_entry)
+        box.pack_start(field("GitHub repo", self.repo_entry), False, False, 0)
+
+        box.pack_start(section("Installation"), False, False, 0)
 
         self.install_dir_entry = Gtk.Entry()
         if app and app.get("install_dir"):
@@ -63,11 +61,8 @@ class AppDialog(Gtk.Dialog):
         self.install_dir_entry.set_placeholder_text("Folder where future versions will be saved")
         dir_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         dir_row.pack_start(self.install_dir_entry, True, True, 0)
-        dir_btn = Gtk.Button(label="Browse")
-        dir_btn.get_style_context().add_class("ghost-btn")
-        dir_btn.connect("clicked", lambda *_: self._pick_folder(self.install_dir_entry))
-        dir_row.pack_start(dir_btn, False, False, 0)
-        add_field("Install folder", dir_row)
+        dir_row.pack_start(browse_button(lambda *_: self._pick_folder(self.install_dir_entry)), False, False, 0)
+        box.pack_start(field("Install folder", dir_row), False, False, 0)
 
         self.custom_path_entry = Gtk.Entry()
         self.custom_path_entry.set_placeholder_text("Full path (optional, overrides folder+name)")
@@ -75,17 +70,14 @@ class AppDialog(Gtk.Dialog):
             self.custom_path_entry.set_text(app["custom_path"])
         path_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         path_row.pack_start(self.custom_path_entry, True, True, 0)
-        path_btn = Gtk.Button(label="Browse")
-        path_btn.get_style_context().add_class("ghost-btn")
-        path_btn.connect("clicked", lambda *_: self._pick_file(self.custom_path_entry))
-        path_row.pack_start(path_btn, False, False, 0)
-        add_field("Custom path", path_row)
+        path_row.pack_start(browse_button(lambda *_: self._pick_file(self.custom_path_entry)), False, False, 0)
+        box.pack_start(field("Custom path", path_row), False, False, 0)
 
         self.filter_entry = Gtk.Entry()
         self.filter_entry.set_placeholder_text("Regex to select the asset (optional)")
         if app and app.get("asset_filter"):
             self.filter_entry.set_text(app["asset_filter"])
-        add_field("Asset filter", self.filter_entry)
+        box.pack_start(field("Asset filter", self.filter_entry), False, False, 0)
 
         arch_hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.x86_check = Gtk.CheckButton(label="x86_64")
@@ -97,40 +89,39 @@ class AppDialog(Gtk.Dialog):
             if default_arch == val:
                 cb.set_active(True)
             arch_hb.pack_start(cb, False, False, 0)
-        add_field("Architecture", arch_hb)
+        box.pack_start(field("Architecture", arch_hb), False, False, 0)
 
-        self.auto_check = Gtk.CheckButton(label="Update without asking for confirmation")
-        self.auto_check.set_active(bool(app and app.get("auto_update")))
-        box.pack_start(self.auto_check, False, False, 0)
+        box.pack_start(section("Options"), False, False, 0)
 
-        self.enabled_check = Gtk.CheckButton(label="Entry enabled")
-        self.enabled_check.set_active(bool(app.get("enabled", True) if app else True))
-        box.pack_start(self.enabled_check, False, False, 0)
+        row, self.auto_check = switch_row(
+            "Update without asking", bool(app and app.get("auto_update"))
+        )
+        box.pack_start(row, False, False, 0)
+
+        row, self.enabled_check = switch_row(
+            "Entry enabled", bool(app.get("enabled", True) if app else True)
+        )
+        box.pack_start(row, False, False, 0)
 
         global_desktop = bool(cfg["settings"].get("create_desktop", True))
-        self.desktop_check = Gtk.CheckButton(label="Create a .desktop entry for this app")
-        if app:
-            self.desktop_check.set_active(bool(app.get("create_desktop", True)))
-        else:
-            self.desktop_check.set_active(global_desktop)
+        row, self.desktop_check = switch_row("Create a .desktop entry for this app", True)
+        self.desktop_check.set_active(bool(app.get("create_desktop", True)) if app else global_desktop)
         if not global_desktop:
             self.desktop_check.set_sensitive(False)
             self.desktop_check.set_tooltip_text("Disabled by the 'create_desktop' setting")
-        box.pack_start(self.desktop_check, False, False, 0)
+        box.pack_start(row, False, False, 0)
 
         self.test_label = Gtk.Label(label="", xalign=0, wrap=True)
         self.test_label.set_justify(Gtk.Justification.LEFT)
         box.pack_start(self.test_label, False, False, 0)
 
         test_btn = Gtk.Button(label="Test: show latest release")
-        test_btn.get_style_context().add_class("ghost-btn")
+        test_btn.get_style_context().add_class("flat")
         test_btn.connect("clicked", lambda *_: self.test_repo())
+        test_btn.set_halign(Gtk.Align.START)
         box.pack_start(test_btn, False, False, 0)
 
-        self.add_button("Cancel", Gtk.ResponseType.CANCEL)
-        self.add_button("Save", Gtk.ResponseType.ACCEPT)
-        self.get_widget_for_response(Gtk.ResponseType.ACCEPT).get_style_context().add_class("primary-btn")
-        self.set_default_response(Gtk.ResponseType.ACCEPT)
+        use_header(self)
         self.show_all()
 
     def _arch_toggled(self, cb, val):

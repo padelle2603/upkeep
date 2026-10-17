@@ -19,11 +19,22 @@ from .. import selfupdate
 from .. import updater
 from .. import __version__
 
+from . import theme
 from .app_dialog import AppDialog
 from .settings_dialog import SettingsDialog
+from .widgets import (
+    ICON_ADD,
+    ICON_CHECK,
+    ICON_CLOSE,
+    ICON_DOWNLOAD,
+    ICON_MENU,
+    ICON_UPDATE_ALL,
+    ICON_UPDATE_AVAILABLE,
+)
 
 APP_ID = "io.github.padelle2603.upkeep"
 ICON_NAME = "upkeep"
+ROW_HINT = "Double-click to edit  ·  right-click for more actions"
 
 
 def _project_root():
@@ -57,9 +68,9 @@ def _load_css():
 
 
 def get_app_pixbuf(size=64):
-    theme = Gtk.IconTheme.get_default()
+    theme_obj = Gtk.IconTheme.get_default()
     try:
-        info = theme.lookup_icon(ICON_NAME, size, Gtk.IconLookupFlags.USE_BUILTIN)
+        info = theme_obj.lookup_icon(ICON_NAME, size, Gtk.IconLookupFlags.USE_BUILTIN)
         if info is not None:
             return info.load_icon()
     except Exception:
@@ -90,7 +101,7 @@ STATE_LABEL = {
     "error": "Error",
     "updated": "Up to date",
     "skipped": "Skipped",
-    "pending": "Checking\u2026",
+    "pending": "Checking…",
     "missing": "Missing file",
 }
 PILL_CLASS = {
@@ -102,15 +113,9 @@ PILL_CLASS = {
     "skipped": "",
     "pending": "pill-pending",
 }
-DOT_CLASS = {
-    "outdated": "dot-warn",
-    "uptodate": "dot-ok",
-    "updated": "dot-ok",
-    "error": "dot-err",
-    "missing": "dot-err",
-    "skipped": "dot-neutral",
-    "pending": "dot-accent",
-}
+# A status worth acting on is the only one that gets the accent colour on its
+# row button: six identical primary buttons down the list say nothing.
+URGENT_STATUS = ("outdated", "missing")
 
 
 def _btn_with_icon(label, icon, classes=()):
@@ -124,17 +129,51 @@ def _btn_with_icon(label, icon, classes=()):
     return btn
 
 
+def _flat_btn(label, icon):
+    return _btn_with_icon(label, icon, ("flat",))
+
+
+def _icon_btn(icon, tooltip, classes=()):
+    btn = Gtk.Button.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
+    btn.set_tooltip_text(tooltip)
+    for c in classes:
+        btn.get_style_context().add_class(c)
+    return btn
+
+
+def _reveal(widget):
+    """Show a widget that opted out of show_all(), children included.
+
+    show_all() on a no_show_all widget does nothing at all: GTK checks the
+    widget's own flag first and returns, so its children stay invisible and
+    the banner renders as an empty strip. Walking them here is the fix.
+    A ProgressBar has no children at all: its trough is drawn by GTK, and
+    asking it for one is an AttributeError, not an empty list.
+    """
+    widget.show()
+    get_children = getattr(widget, "get_children", None)
+    if get_children is None:
+        return
+    for child in get_children():
+        child.show_all()
+
+
 def _plural(n, singular, plural=None):
     return f"{n} {singular if n == 1 else (plural or singular + 's')}"
 
 
+def updates_available(count):
+    """One wording for 'there is something to update': banner and status line."""
+    return f"{_plural(count, 'update')} available"
+
+
 def check_summary(total, outdated, errors):
-    """Human-readable outcome of a check, shown in the footer so the user always sees a result."""
+    """Human-readable outcome of a check, shown in the status line so the user always sees a result."""
     if not total:
         return "no apps to check"
     parts = [_plural(total, "app")]
     if outdated:
-        parts.append(f"{_plural(outdated, 'update')} available")
+        parts.append(updates_available(outdated))
     elif not errors:
         parts.append("all up to date")
     if errors:
@@ -146,6 +185,12 @@ def _describe_exception(exc):
     return f"{type(exc).__name__}: {exc}"
 
 
+def _copy_to_clipboard(text):
+    """Feedback lives in the status line, so copying the path says so too."""
+    Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(text, -1)
+    return text
+
+
 class AppRow(Gtk.ListBoxRow):
     def __init__(self, app, settings, on_update, on_edit, on_delete):
         super().__init__()
@@ -155,19 +200,17 @@ class AppRow(Gtk.ListBoxRow):
         self.local_version = ""
         self.remote_tag = None
         self.installed = False
-        self.get_style_context().add_class("app-card")
+        self.path = ""
+        self.get_style_context().add_class("app-row")
+        self.set_tooltip_text(ROW_HINT)
 
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        box.set_margin_top(10)
-        box.set_margin_bottom(10)
-        box.set_margin_start(14)
+        box.set_margin_top(9)
+        box.set_margin_bottom(9)
+        box.set_margin_start(12)
         box.set_margin_end(10)
 
-        self.dot = Gtk.Label(label="\u25cf")
-        self.dot.set_size_request(14, -1)
-        box.pack_start(self.dot, False, False, 0)
-
-        info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
         info.set_hexpand(True)
 
         name_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -176,6 +219,7 @@ class AppRow(Gtk.ListBoxRow):
         name_row.pack_start(self.name_label, False, False, 0)
         repo_label = Gtk.Label(label=app["repo"], xalign=0)
         repo_label.get_style_context().add_class("app-repo")
+        repo_label.set_ellipsize(Pango.EllipsizeMode.END)
         name_row.pack_start(repo_label, False, False, 0)
         info.pack_start(name_row, False, False, 0)
 
@@ -184,11 +228,6 @@ class AppRow(Gtk.ListBoxRow):
         self.sub_label.set_ellipsize(Pango.EllipsizeMode.END)
         info.pack_start(self.sub_label, False, False, 0)
 
-        self.path_label = Gtk.Label(label="", xalign=0)
-        self.path_label.get_style_context().add_class("app-path")
-        self.path_label.set_ellipsize(Pango.EllipsizeMode.END)
-        info.pack_start(self.path_label, False, False, 0)
-
         box.pack_start(info, True, True, 0)
 
         self.status_label = Gtk.Label(label="")
@@ -196,40 +235,50 @@ class AppRow(Gtk.ListBoxRow):
         self.status_label.set_margin_start(8)
         box.pack_start(self.status_label, False, False, 0)
 
-        update_btn = Gtk.Button.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.BUTTON)
-        update_btn.set_tooltip_text("Update")
-        update_btn.get_style_context().add_class("update-btn")
-        update_btn.connect("clicked", lambda *_: on_update(self))
-        self.update_btn = update_btn
-        box.pack_start(update_btn, False, False, 0)
-
-        edit_btn = Gtk.Button.new_from_icon_name("document-edit-symbolic", Gtk.IconSize.BUTTON)
-        edit_btn.set_tooltip_text("Edit")
-        edit_btn.get_style_context().add_class("icon-btn")
-        edit_btn.connect("clicked", lambda *_: on_edit(self))
-        box.pack_start(edit_btn, False, False, 0)
-
-        delete_btn = Gtk.Button.new_from_icon_name("user-trash-symbolic", Gtk.IconSize.BUTTON)
-        delete_btn.set_tooltip_text("Remove")
-        delete_btn.get_style_context().add_class("icon-btn")
-        delete_btn.get_style_context().add_class("danger")
-        delete_btn.connect("clicked", lambda *_: on_delete(self))
-        box.pack_start(delete_btn, False, False, 0)
+        self.update_btn = _icon_btn(ICON_CHECK, "Update", ("row-action",))
+        self.update_btn.connect("clicked", lambda *_: on_update(self))
+        box.pack_start(self.update_btn, False, False, 0)
 
         self.add(box)
+        self._build_menu(on_update, on_edit, on_delete)
         self.refresh(settings)
+
+    def _build_menu(self, on_update, on_edit, on_delete):
+        """Everything that is not worth a permanent button still has to be reachable."""
+        menu = Gtk.Menu()
+        self.menu_update_item = Gtk.MenuItem(label="Update")
+        self.menu_update_item.connect("activate", lambda *_: on_update(self))
+        menu.append(self.menu_update_item)
+        edit_item = Gtk.MenuItem(label="Edit…")
+        edit_item.connect("activate", lambda *_: on_edit(self))
+        menu.append(edit_item)
+        copy_item = Gtk.MenuItem(label="Copy install path")
+        copy_item.connect("activate", lambda *_: _copy_to_clipboard(self.path))
+        menu.append(copy_item)
+        menu.append(Gtk.SeparatorMenuItem())
+        remove_item = Gtk.MenuItem(label="Remove…")
+        remove_item.get_style_context().add_class("destructive-action")
+        remove_item.connect("activate", lambda *_: on_delete(self))
+        menu.append(remove_item)
+        menu.show_all()
+        self.menu = menu
+
+        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.connect("button-press-event", self._on_button_press)
+
+    def _on_button_press(self, _widget, event):
+        if event.button == 3:
+            self.menu.popup_at_pointer(event)
+            return True
+        return False
 
     def refresh(self, settings):
         local = config.read_local_version(self.app, settings) or "not installed"
         self.local_version = local
-        path = config.app_target_path(self.app)
-        self.installed = os.path.exists(path)
-        self.path_label.set_text(path)
+        self.path = config.app_target_path(self.app)
+        self.installed = os.path.exists(self.path)
         enabled = self.app.get("enabled", True)
         self.update_btn.set_sensitive(enabled)
-        self.name_label.set_sensitive(not enabled)
-        self.sub_label.set_sensitive(not enabled)
-        self.path_label.set_sensitive(not enabled)
         if not self.installed and self.status in ("unknown", "uptodate", "outdated"):
             self.status = "missing"
         self._apply_status()
@@ -246,7 +295,7 @@ class AppRow(Gtk.ListBoxRow):
     def _update_sub(self):
         local = self.local_version if self.installed else "not installed"
         if self.remote_tag and self.remote_tag != self.local_version:
-            self.sub_label.set_text(f"{local}  \u2192  {self.remote_tag}")
+            self.sub_label.set_text(f"{local}  →  {self.remote_tag}")
         else:
             self.sub_label.set_text(local)
 
@@ -256,20 +305,22 @@ class AppRow(Gtk.ListBoxRow):
         if not enabled:
             ctx.add_class("disabled")
             self.update_btn.set_sensitive(False)
+            self.menu_update_item.set_sensitive(False)
             self._set_pill("Disabled", "pill-disabled")
-            self._set_dot("dot-neutral")
+            self._set_urgency(False)
             self._set_reason("")
             return
         ctx.remove_class("disabled")
         self.update_btn.set_sensitive(True)
+        self.menu_update_item.set_sensitive(True)
         self._set_pill(STATE_LABEL.get(self.status, ""), PILL_CLASS.get(self.status, ""))
-        self._set_dot(DOT_CLASS.get(self.status, "dot-neutral"))
+        self._set_urgency(self.status in URGENT_STATUS)
         self._set_reason(self.message if self.status in ("error", "missing") else "")
 
     def _set_reason(self, text):
         """Surface the reason (rate limit, missing file, ...) without breaking the layout."""
         self.status_label.set_tooltip_text(text)
-        self.set_tooltip_text(text)
+        self.name_label.set_tooltip_text(text)
 
     def _set_pill(self, text, cls):
         sc = self.status_label.get_style_context()
@@ -279,12 +330,12 @@ class AppRow(Gtk.ListBoxRow):
         if cls:
             sc.add_class(cls)
 
-    def _set_dot(self, cls):
-        sc = self.dot.get_style_context()
-        for c in set(DOT_CLASS.values()):
-            sc.remove_class(c)
-        if cls:
-            sc.add_class(cls)
+    def _set_urgency(self, urgent):
+        sc = self.update_btn.get_style_context()
+        if urgent:
+            sc.add_class("urge")
+        else:
+            sc.remove_class("urge")
 
 
 class MainWindow(Gtk.ApplicationWindow):
@@ -297,6 +348,14 @@ class MainWindow(Gtk.ApplicationWindow):
         self.busy = False
         self._checked = False
         self._pulse_id = None
+        self._total = 0
+        self._outdated = 0
+        self._errors = 0
+        self._last_check_time = ""
+        self._last_summary = ""
+        self._progress_text = ""
+        self._stopped = ""
+        self._banner_dismissed = False
         self._size_frac = (0.75, 0.72)
         self._apply_screen_size(initial=True)
         self.get_screen().connect("size-changed", self._on_screen_changed)
@@ -306,56 +365,84 @@ class MainWindow(Gtk.ApplicationWindow):
         self.hb.set_show_close_button(True)
         self.set_titlebar(self.hb)
 
-        title_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        if _icon_available():
-            logo = Gtk.Image.new_from_icon_name(ICON_NAME, Gtk.IconSize.LARGE_TOOLBAR)
-        else:
-            pix = get_app_pixbuf(22)
-            logo = Gtk.Image.new_from_pixbuf(pix) if pix else Gtk.Image.new_from_icon_name("application-x-executable", Gtk.IconSize.LARGE_TOOLBAR)
-        title_box.pack_start(logo, False, False, 0)
-        text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         t = Gtk.Label(label="Upkeep", xalign=0)
         t.get_style_context().add_class("header-title")
         s = Gtk.Label(label="Manage AppImages from GitHub", xalign=0)
         s.get_style_context().add_class("header-subtitle")
-        text_box.pack_start(t, False, False, 0)
-        text_box.pack_start(s, False, False, 0)
-        title_box.pack_start(text_box, False, False, 0)
+        title_box.pack_start(t, False, False, 0)
+        title_box.pack_start(s, False, False, 0)
         self.hb.set_custom_title(title_box)
 
-        self.check_btn = _btn_with_icon("Check", "view-refresh-symbolic", ("ghost-btn",))
-        self.check_btn.connect("clicked", lambda *_: self.run_checks())
-        self.hb.pack_start(self.check_btn)
-
-        self.update_all_btn = _btn_with_icon("Update all", "download-symbolic", ("primary-btn",))
-        self.update_all_btn.connect("clicked", lambda *_: self.update_all())
-        self.hb.pack_start(self.update_all_btn)
-
-        add_btn = _btn_with_icon("Add", "list-add-symbolic", ("ghost-btn",))
-        add_btn.connect("clicked", lambda *_: self.add_app())
-        self.hb.pack_end(add_btn)
-
-        settings_btn = Gtk.Button.new_from_icon_name("preferences-system-symbolic", Gtk.IconSize.BUTTON)
-        settings_btn.set_tooltip_text("Settings")
-        settings_btn.get_style_context().add_class("icon-btn")
-        settings_btn.connect("clicked", lambda *_: self.open_settings())
-        self.hb.pack_end(settings_btn)
+        menu_btn = Gtk.MenuButton()
+        menu_img = Gtk.Image.new_from_icon_name(ICON_MENU, Gtk.IconSize.BUTTON)
+        menu_btn.set_image(menu_img)
+        menu_btn.set_tooltip_text("Main menu")
+        menu = Gtk.Menu()
+        settings_item = Gtk.MenuItem(label="Settings…")
+        settings_item.connect("activate", lambda *_: self.open_settings())
+        menu.append(settings_item)
+        about_item = Gtk.MenuItem(label="About Upkeep")
+        about_item.connect("activate", lambda *_: self.show_about())
+        menu.append(about_item)
+        menu.show_all()
+        menu_btn.set_popup(menu)
+        self.hb.pack_end(menu_btn)
 
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.add(vbox)
 
-        self.summary_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        self.summary_box.get_style_context().add_class("summary-strip")
-        vbox.pack_start(self.summary_box, False, False, 0)
-        self.stat_labels = {}
-        self.summary_box.pack_start(self._stat_card("total", "Total apps", ""), False, False, 0)
-        self.summary_box.pack_start(self._stat_card("outdated", "Updates available", "accent-warn"), False, False, 0)
-        self.summary_box.pack_start(self._stat_card("ok", "Up to date", "accent-ok"), False, False, 0)
-        self.summary_box.pack_start(self._stat_card("err", "Errors", "accent-err"), False, False, 0)
+        self.banner_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.banner_box.get_style_context().add_class("banner")
+        self.banner_box.set_no_show_all(True)
+        self.banner_label = Gtk.Label(label="", xalign=0)
+        self.banner_label.set_hexpand(True)
+        self.banner_box.pack_start(self.banner_label, True, True, 0)
+        self.banner_btn = Gtk.Button(label="Update all")
+        self.banner_btn.get_style_context().add_class("suggested-action")
+        self.banner_btn.connect("clicked", lambda *_: self.update_all())
+        self.banner_box.pack_start(self.banner_btn, False, False, 0)
+        self.banner_close = _icon_btn(ICON_CLOSE, "Dismiss", ("flat",))
+        self.banner_close.connect("clicked", lambda *_: self.dismiss_banner())
+        self.banner_box.pack_start(self.banner_close, False, False, 0)
+        self.banner_box.set_visible(False)
+        vbox.pack_start(self.banner_box, False, False, 0)
+
+        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        bar.get_style_context().add_class("action-bar")
+
+        self.check_btn = _flat_btn("Check", ICON_CHECK)
+        self.check_btn.connect("clicked", lambda *_: self.run_checks())
+        bar.pack_start(self.check_btn, False, False, 0)
+
+        # go-down-symbolic, not download-symbolic: Adwaita has no
+        # download-symbolic, and Adwaita is the icon theme the AppImage
+        # ships, so the icon GTK cannot find is drawn as a filled box.
+        self.update_all_btn = _btn_with_icon("Update all", ICON_UPDATE_ALL, ("suggested-action",))
+        self.update_all_btn.connect("clicked", lambda *_: self.update_all())
+        bar.pack_start(self.update_all_btn, False, False, 0)
+
+        add_btn = _flat_btn("Add", ICON_ADD)
+        add_btn.connect("clicked", lambda *_: self.add_app())
+        bar.pack_start(add_btn, False, False, 0)
+
+        self.status_label = Gtk.Label(label="Last check: never", xalign=1)
+        self.status_label.get_style_context().add_class("status-label")
+        self.status_label.set_ellipsize(Pango.EllipsizeMode.END)
+        bar.pack_end(self.status_label, False, False, 0)
+        vbox.pack_start(bar, False, False, 0)
+
+        self.progress = Gtk.ProgressBar()
+        self.progress.set_show_text(False)
+        self.progress.set_valign(Gtk.Align.CENTER)
+        self.progress.set_no_show_all(True)
+        self.progress.set_visible(False)
+        vbox.pack_start(self.progress, False, False, 0)
 
         self.listbox = Gtk.ListBox()
         self.listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.listbox.connect("row-activated", lambda _, row: self.edit_app(row))
+        self.listbox.connect("key-press-event", self._on_list_key)
         self.listbox.get_style_context().add_class("app-list")
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
@@ -374,32 +461,45 @@ class MainWindow(Gtk.ApplicationWindow):
         empty_title.get_style_context().add_class("empty-title")
         empty_title.set_margin_top(8)
         self.empty_box.pack_start(empty_title, False, False, 0)
-        empty_sub = Gtk.Label(label="Add your first AppImage: the app checks GitHub releases\nand keeps it up to date automatically.")
+        empty_sub = Gtk.Label(
+            label="Add your first AppImage: Upkeep checks GitHub releases\nand keeps it up to date automatically."
+        )
         empty_sub.get_style_context().add_class("empty-sub")
         empty_sub.set_justify(Gtk.Justification.CENTER)
-        empty_sub.set_margin_bottom(6)
+        empty_sub.set_margin_bottom(8)
         self.empty_box.pack_start(empty_sub, False, False, 0)
-        empty_btn = _btn_with_icon("Add your first AppImage", "list-add-symbolic", ("primary-btn",))
+        empty_btn = _btn_with_icon("Add your first AppImage", ICON_ADD, ("suggested-action",))
         empty_btn.connect("clicked", lambda *_: self.add_app())
+        empty_btn.set_halign(Gtk.Align.CENTER)
         self.empty_box.pack_start(empty_btn, False, False, 0)
         vbox.pack_start(self.empty_box, True, False, 0)
 
-        footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        footer.set_margin_start(14)
-        footer.set_margin_end(14)
-        footer.set_margin_top(4)
-        footer.set_margin_bottom(10)
-
-        self.progress = Gtk.ProgressBar()
-        self.progress.set_show_text(True)
-        footer.pack_start(self.progress, True, True, 0)
-
-        self.last_check_label = Gtk.Label(label="Last check: never")
-        self.last_check_label.get_style_context().add_class("footer-label")
-        footer.pack_end(self.last_check_label, False, False, 0)
-        vbox.pack_start(footer, False, False, 0)
-
         self.rebuild_list()
+
+    def _on_list_key(self, _widget, event):
+        """Delete removes, like every file manager the user has ever used."""
+        if event.keyval != Gdk.KEY_Delete:
+            return False
+        row = self.listbox.get_selected_row()
+        if isinstance(row, AppRow):
+            self.delete_app(row)
+            return True
+        return False
+
+    def show_about(self):
+        about = Gtk.AboutDialog(transient_for=self, modal=True)
+        about.set_program_name("Upkeep")
+        about.set_version(__version__)
+        about.set_comments("Automatically update AppImages from GitHub releases.")
+        about.set_license_type(Gtk.License.GPL_3_0)
+        about.set_website("https://github.com/padelle2603/Upkeep")
+        pix = get_app_pixbuf(128)
+        if pix is not None:
+            about.set_logo(pix)
+        elif _icon_available():
+            about.set_logo_icon_name(ICON_NAME)
+        about.run()
+        about.destroy()
 
     def show_update(self, version):
         """'Upkeep 1.1.0 is available', shown once per launch.
@@ -416,10 +516,10 @@ class MainWindow(Gtk.ApplicationWindow):
 
         header = Gtk.HeaderBar()
         header.set_show_close_button(True)
-        not_now = _btn_with_icon("Not now", None, ("ghost-btn",))
+        not_now = _flat_btn("Not now", None)
         not_now.connect("clicked", lambda *_: win.destroy())
         header.pack_start(not_now)
-        download = _btn_with_icon("Download", None, ("primary-btn",))
+        download = _btn_with_icon("Download", ICON_DOWNLOAD, ("suggested-action",))
         download.connect("clicked", lambda *_: (self._open_releases(), win.destroy()))
         header.pack_end(download)
 
@@ -429,7 +529,7 @@ class MainWindow(Gtk.ApplicationWindow):
         body.set_margin_top(8)
         body.set_margin_bottom(20)
         body.pack_start(
-            Gtk.Image.new_from_icon_name("software-update-available-symbolic", Gtk.IconSize.DIALOG),
+            Gtk.Image.new_from_icon_name(ICON_UPDATE_AVAILABLE, Gtk.IconSize.DIALOG),
             False, False, 0,
         )
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -465,20 +565,6 @@ class MainWindow(Gtk.ApplicationWindow):
         except OSError:
             self._notify("Could not open a browser. Visit " + selfupdate.RELEASES_URL)
 
-    def _stat_card(self, key, label, accent):
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        card.get_style_context().add_class("stat-card")
-        val = Gtk.Label(label="0", xalign=0)
-        val.get_style_context().add_class("stat-value")
-        if accent:
-            val.get_style_context().add_class(accent)
-        lab = Gtk.Label(label=label, xalign=0)
-        lab.get_style_context().add_class("stat-label")
-        card.pack_start(val, False, False, 0)
-        card.pack_start(lab, False, False, 0)
-        self.stat_labels[key] = val
-        return card
-
     def _apply_screen_size(self, initial=False):
         screen = self.get_screen()
         monitor = screen.get_primary_monitor()
@@ -512,8 +598,17 @@ class MainWindow(Gtk.ApplicationWindow):
             row = AppRow(a, self.cfg["settings"], self.update_row, self.edit_app, self.delete_app)
             self.listbox.add(row)
         has_apps = bool(apps)
-        self.scrolled.set_visible(has_apps)
-        self.empty_box.set_visible(not has_apps)
+        # show_all(), not set_visible(): these carry no_show_all so that
+        # show() at startup does not flash them, and show_all() is the only
+        # call that reaches their children.
+        if has_apps:
+            _reveal(self.scrolled)
+        else:
+            self.scrolled.hide()
+        if has_apps:
+            self.empty_box.hide()
+        else:
+            _reveal(self.empty_box)
         self.listbox.show_all()
         self.update_all_btn.set_sensitive(any(a.get("enabled", True) for a in apps))
         self.update_summary()
@@ -523,35 +618,64 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def update_summary(self):
         rows = self.iter_rows()
-        total = len(rows)
-        outdated = sum(1 for r in rows if r.status in ("outdated", "missing"))
-        ok = sum(1 for r in rows if r.status in ("uptodate", "updated"))
-        err = sum(1 for r in rows if r.status == "error")
-        self._set_stat("total", str(total))
-        if self._checked and total:
-            self._set_stat("outdated", str(outdated))
-            self._set_stat("ok", str(ok))
-            self._set_stat("err", str(err))
-        else:
-            self._set_stat("outdated", "\u2014")
-            self._set_stat("ok", "\u2014")
-            self._set_stat("err", "\u2014")
+        self._total = len(rows)
+        self._outdated = sum(1 for r in rows if r.status in ("outdated", "missing"))
+        self._errors = sum(1 for r in rows if r.status == "error")
+        self._refresh_banner()
 
-    def _set_stat(self, key, text):
-        label = self.stat_labels.get(key)
-        if label is not None:
-            label.set_text(text)
+    def dismiss_banner(self):
+        self._banner_dismissed = True
+        self.banner_box.hide()
+
+    def _refresh_banner(self):
+        """The one message that stays put: a stopped check and a pile of
+        pending updates both disappear the moment the user acts on them,
+        which is what a transient notification cannot do."""
+        if self._banner_dismissed or self.busy:
+            self.banner_box.hide()
+            return
+        if self._stopped:
+            message, has_action = f"Check stopped: {self._stopped}", False
+        elif self._outdated:
+            message, has_action = updates_available(self._outdated), True
+        else:
+            self.banner_box.hide()
+            return
+        self.banner_label.set_text(message)
+        # Reveal before hiding: _reveal() shows every child, including the
+        # button a stopped check has no use for.
+        _reveal(self.banner_box)
+        if has_action:
+            self.banner_btn.show_all()
+        else:
+            self.banner_btn.hide()
+
+    def _render_status(self):
+        if self.busy and self._progress_text:
+            self.status_label.set_text(self._progress_text)
+            return
+        if not self._last_check_time:
+            self.status_label.set_text("Last check: never")
+            return
+        text = f"Last check: {self._last_check_time}"
+        if self._last_summary:
+            text += f"  ·  {self._last_summary}"
+        self.status_label.set_text(text)
 
     def set_busy(self, busy):
         self.busy = busy
         self.check_btn.set_sensitive(not busy)
         self.update_all_btn.set_sensitive(not busy)
+        self._render_status()
+        self._refresh_banner()
 
     def run_checks(self, auto=False):
         if self.busy:
             return
+        self._stopped = ""
+        self._banner_dismissed = False
         self.set_busy(True)
-        self.set_progress_pulse(True, "Checking for updates...")
+        self.set_progress_pulse(True, "Checking for updates…")
         rows = [r for r in self.iter_rows() if r.app.get("enabled", True)]
 
         def worker():
@@ -585,12 +709,12 @@ class MainWindow(Gtk.ApplicationWindow):
                 outdated += 1
             elif state == "error":
                 errors += 1
+        self._stopped = stopped
         self.set_last_check(check_summary(len(results), outdated, errors))
         self.update_summary()
         if stopped:
-            # The footer persists, a notification does not: a check that stops
+            # The banner persists, a notification does not: a check that stops
             # for a reason the user cannot see looks like Upkeep is broken.
-            self.set_last_check(f"stopped · {stopped}")
             self._notify("Upkeep: " + stopped)
         if auto and outdated:
             self._notify(f"{outdated} AppImage(s) to update")
@@ -610,7 +734,7 @@ class MainWindow(Gtk.ApplicationWindow):
         if not rows:
             return
         self.set_busy(True)
-        self.set_progress_pulse(True, "Checking versions...")
+        self.set_progress_pulse(True, "Checking versions…")
         for row in rows:
             row.set_status("pending")
 
@@ -657,7 +781,7 @@ class MainWindow(Gtk.ApplicationWindow):
             for row in rows:
                 def progress_cb(done_bytes, total_bytes, row=row):
                     frac = (progress[0] + (done_bytes / total_bytes if total_bytes else 0)) / total
-                    GLib.idle_add(self.set_progress_frac, frac, f"Download: {row.app['name']}")
+                    GLib.idle_add(self.set_progress_frac, frac, f"Downloading: {row.app['name']}")
                 try:
                     r = updater.update_app(row.app, self.cfg["settings"], progress_cb=progress_cb, confirm_fn=None)
                     state, info, message = r.state, r.info, r.message
@@ -697,34 +821,44 @@ class MainWindow(Gtk.ApplicationWindow):
         self.set_busy(False)
         self.set_progress_pulse(False)
         self._checked = True
-        self.set_last_check()
+        self.set_last_check(check_summary(self._total, self._outdated, self._errors))
         self.update_summary()
         self._notify(message)
         return False
 
     def set_last_check(self, summary=""):
-        now = time.strftime("%H:%M")
-        text = f"Last check: {now}"
-        if summary:
-            text += f"  ·  {summary}"
-        self.last_check_label.set_text(text)
+        self._last_check_time = time.strftime("%H:%M")
+        self._last_summary = summary
+        self._render_status()
 
     def set_progress_frac(self, frac, text=""):
+        if self._pulse_id:
+            # A real fraction outranks the pulse: pulsing on top of it made
+            # the bar flicker backwards for every byte received.
+            GLib.source_remove(self._pulse_id)
+            self._pulse_id = None
+        _reveal(self.progress)
         self.progress.set_fraction(max(0.0, min(1.0, frac)))
-        self.progress.set_text(text)
+        self._progress_text = text
+        self._render_status()
         return False
 
     def set_progress_pulse(self, active, text=""):
         if active:
+            _reveal(self.progress)
             self.progress.set_fraction(0.0)
-            self.progress.set_text(text)
-            self._pulse_id = GLib.timeout_add(120, self._pulse_step)
+            self._progress_text = text
+            self._render_status()
+            if self._pulse_id is None:
+                self._pulse_id = GLib.timeout_add(120, self._pulse_step)
         else:
             if self._pulse_id:
                 GLib.source_remove(self._pulse_id)
                 self._pulse_id = None
-            self.progress.set_text("")
+            self._progress_text = ""
+            self.progress.hide()
             self.progress.set_fraction(0.0)
+            self._render_status()
         return False
 
     def _pulse_step(self):
@@ -750,6 +884,7 @@ class MainWindow(Gtk.ApplicationWindow):
             buttons=Gtk.ButtonsType.YES_NO,
             text=f"Remove '{row.app['name']}' from the configuration?",
         )
+        dlg.format_secondary_text(row.path or "The installed file is left on disk.")
         resp = dlg.run()
         dlg.destroy()
         if resp == Gtk.ResponseType.YES:
@@ -782,6 +917,7 @@ class UpdaterApplication(Gtk.Application):
 
     def do_startup(self):
         Gtk.Application.do_startup(self)
+        theme.apply_theme()
         _load_css()
         Gtk.Window.set_default_icon_name(ICON_NAME)
         pix = get_app_pixbuf(64)
