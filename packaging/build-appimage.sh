@@ -51,6 +51,27 @@ fi
 if [ -d "${SHARE}/locale" ]; then
     find "${SHARE}/locale" -mindepth 1 -maxdepth 1 ! -name en -exec rm -rf {} +
 fi
+# On Arch an SVG is drawn by glycin, a plugin that dlopens librsvg at runtime,
+# and PyInstaller only follows link-time dependencies, so it collects neither.
+# Copy the plugin and the library it needs. On Debian and Ubuntu this finds
+# nothing: there PyInstaller's gdk-pixbuf hook already collects the loader
+# module and generates its cache, and copying librsvg again would only add
+# megabytes to the bundle.
+echo "==> Collecting SVG support..."
+for loader in /usr/lib/*/glycin-loaders/*/glycin-svg /usr/lib/glycin-loaders/*/glycin-svg
+do
+    [ -f "${loader}" ] || continue
+    # ldd prints "librsvg-2.so.2 => /usr/lib/librsvg-2.so.2 (0x...)": the path
+    # is the third field, the last one is the load address.
+    for lib in "${loader}" $(ldd "${loader}" 2>/dev/null | awk '/librsvg/ {print $3}')
+    do
+        [ -f "${lib}" ] || continue
+        dest="${BUNDLE}/upkeep/_internal/${lib#/usr/}"
+        mkdir -p "$(dirname "${dest}")"
+        cp "${lib}" "${dest}"
+        echo "    ${lib#/usr/}"
+    done
+done
 
 echo "==> Assembling ${APPDIR}..."
 mkdir -p "${APPDIR}/usr/bin" "${APPDIR}/usr/share/icons/hicolor/scalable/apps" \
