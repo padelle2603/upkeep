@@ -278,6 +278,7 @@ def build_parser():
 
     c = sub.add_parser("sync", help="Sync local versions with the latest releases (update all without confirmation).")
     c.add_argument("-y", "--yes", action="store_true")
+    c.add_argument("names", nargs="*", help="Optional app name(s) to sync")
     c.set_defaults(fn=cmd_sync)
 
     c = sub.add_parser("add", help="Add or update an app.")
@@ -326,7 +327,6 @@ def cmd_self(cfg, args):
 
 
 def cmd_sync(cfg, args):
-    args.names = []
     return cmd_update(cfg, args, skip_confirm=True)
 
 
