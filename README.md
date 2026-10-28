@@ -8,6 +8,8 @@ AppImages (filterable via checkbox) and arm64.
 > implementation inspired by the general concept popularised by Shelly
 > and by a personal update script.
 
+![Upkeep](img/upkeep.png)
+
 ## Requirements
 
 - Python 3 (>= 3.9)
