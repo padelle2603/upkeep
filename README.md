@@ -6,7 +6,7 @@ AppImages (filterable via checkbox) and arm64.
 
 > Upkeep was previously known as "AppImage Updater". It is an independent
 > implementation inspired by the general concept popularised by Shelly
-> and by a personal update script. See [NOTICE](NOTICE).
+> and by a personal update script.
 
 ## Requirements
 
