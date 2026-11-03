@@ -426,6 +426,10 @@ class MainWindow(Gtk.ApplicationWindow):
         add_btn.connect("clicked", lambda *_: self.add_app())
         bar.pack_start(add_btn, False, False, 0)
 
+        del_btn = _flat_btn("Delete", ICON_CLOSE)
+        del_btn.connect("clicked", lambda *_: self.delete_app(None))
+        bar.pack_start(del_btn, False, False, 0)
+
         self.status_label = Gtk.Label(label="Last check: never", xalign=1)
         self.status_label.get_style_context().add_class("status-label")
         self.status_label.set_ellipsize(Pango.EllipsizeMode.END)
@@ -878,6 +882,10 @@ class MainWindow(Gtk.ApplicationWindow):
             self.rebuild_list()
 
     def delete_app(self, row):
+        if row is None:
+            row = self.listbox.get_selected_row()
+            if not isinstance(row, AppRow):
+                return
         dlg = Gtk.MessageDialog(
             transient_for=self, modal=True,
             message_type=Gtk.MessageType.QUESTION,
