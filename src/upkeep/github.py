@@ -7,11 +7,15 @@ import json
 import re
 import urllib.request
 import urllib.error
+from urllib.parse import urlparse
 from datetime import datetime
 
-API_BASE = "https://api.github.com/repos/{repo}/releases/latest"
+from . import __version__
+
+API_LATEST = "https://api.github.com/repos/{repo}/releases/latest"
+API_RELEASES = "https://api.github.com/repos/{repo}/releases?per_page=100"
 DEFAULT_TIMEOUT = 10
-USER_AGENT = f"upkeep/{__import__('upkeep').__version__}"
+USER_AGENT = f"upkeep/{__version__}"
 
 
 class GitHubError(Exception):
@@ -45,16 +49,24 @@ def _reset_hint(headers):
     return f", resets at {when}"
 
 
-def fetch_latest_release(repo, timeout=DEFAULT_TIMEOUT):
-    repo = (repo or "").strip().lstrip("@/")
-    if "/" not in repo:
-        raise GitHubError(f"Invalid repo: {repo!r} (expected 'owner/repo')", kind="invalid")
-    status, body, headers = _request(API_BASE.format(repo=repo), timeout=timeout)
-    if status == 200:
-        try:
-            return json.loads(body)
-        except json.JSONDecodeError:
-            raise GitHubError(f"Invalid JSON response from GitHub for {repo}", kind="invalid")
+def normalize_repo(repo):
+    repo = (repo or "").strip()
+    if repo.startswith(("http://", "https://")):
+        parsed = urlparse(repo)
+        parts = [p for p in parsed.path.split("/") if p]
+        if len(parts) >= 2:
+            repo = parts[0] + "/" + parts[1]
+    return repo.lstrip("@/")
+
+
+def _decode_json_or_raise(body, repo):
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError:
+        raise GitHubError(f"Invalid JSON response from GitHub for {repo}", kind="invalid")
+
+
+def _raise_release_error(status, headers, repo):
     if status == 403:
         # Deliberately not GitHub's own wording: it names the caller's IP,
         # repeats the same sentence for every app in the list and offers
@@ -66,6 +78,42 @@ def fetch_latest_release(repo, timeout=DEFAULT_TIMEOUT):
     if status == 404:
         raise GitHubError(f"Repository '{repo}' not found or has no releases.", kind="not_found")
     raise GitHubError(f"GitHub responded with HTTP {status} for {repo}", kind="http")
+
+
+def fetch_latest_release(repo, timeout=DEFAULT_TIMEOUT, tag_filter=""):
+    repo = normalize_repo(repo)
+    if "/" not in repo:
+        raise GitHubError(f"Invalid repo: {repo!r} (expected 'owner/repo')", kind="invalid")
+
+    tag_filter = (tag_filter or "").strip()
+    pattern = None
+    if tag_filter:
+        try:
+            pattern = re.compile(tag_filter)
+        except re.error as e:
+            raise GitHubError(f"Invalid tag filter regex: {e}", kind="invalid")
+
+    url = API_RELEASES.format(repo=repo) if pattern else API_LATEST.format(repo=repo)
+    status, body, headers = _request(url, timeout=timeout)
+    if status != 200:
+        _raise_release_error(status, headers, repo)
+
+    data = _decode_json_or_raise(body, repo)
+    if not pattern:
+        return data
+
+    if not isinstance(data, list):
+        raise GitHubError(f"Invalid releases response from GitHub for {repo}", kind="invalid")
+
+    for release in data:
+        tag = (release.get("tag_name") or "").strip()
+        if tag and pattern.search(tag):
+            return release
+
+    raise GitHubError(
+        f"No release tag matching {tag_filter!r} found for {repo}.",
+        kind="not_found",
+    )
 
 
 def strip_v(version):
@@ -127,6 +175,13 @@ def _arch_score(low, arch):
 
 
 def select_asset(assets, arch="x86_64", asset_filter="", preferred_name=None):
+    pattern = None
+    if asset_filter:
+        try:
+            pattern = re.compile(asset_filter)
+        except re.error as e:
+            raise GitHubError(f"Invalid asset filter regex: {e}", kind="invalid")
+
     best = None
     best_score = -1
     for asset in assets or []:
@@ -134,7 +189,7 @@ def select_asset(assets, arch="x86_64", asset_filter="", preferred_name=None):
         low = name.lower()
         if not _is_appimage(low):
             continue
-        if asset_filter and not re.search(asset_filter, name):
+        if pattern and not pattern.search(name):
             continue
         score = _arch_score(low, arch)
         if score < 0:

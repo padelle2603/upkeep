@@ -1,6 +1,7 @@
+import json
 import pytest
-from upkeep.github import GitHubError, fetch_latest_release, strip_v
-from unittest.mock import patch, MagicMock
+from upkeep.github import GitHubError, fetch_latest_release, normalize_repo, select_asset, strip_v
+from unittest.mock import patch
 
 
 class TestStripV:
@@ -18,6 +19,17 @@ class TestStripV:
 
     def test_none(self):
         assert strip_v(None) == ""
+
+
+class TestNormalizeRepo:
+    def test_owner_repo_is_unchanged(self):
+        assert normalize_repo("owner/repo") == "owner/repo"
+
+    def test_url_is_normalized(self):
+        assert normalize_repo("https://github.com/owner/repo/releases/latest") == "owner/repo"
+
+    def test_at_prefix_is_removed(self):
+        assert normalize_repo("@/owner/repo") == "owner/repo"
 
 
 class TestGitHubError:
@@ -42,6 +54,46 @@ class TestFetchLatestRelease:
         mock_req.return_value = (404, b'{"message": "Not Found"}', {})
         with pytest.raises(GitHubError, match="not found"):
             fetch_latest_release("nonexistent/repo")
+
+
+    @patch("upkeep.github._request")
+    def test_tag_filter_uses_releases_endpoint(self, mock_req):
+        body = json.dumps([
+            {"tag_name": "photos-v1"},
+            {"tag_name": "auth-v4"},
+        ]).encode()
+        mock_req.return_value = (200, body, {})
+
+        release = fetch_latest_release("owner/repo", tag_filter="^auth-v")
+
+        assert release["tag_name"] == "auth-v4"
+        called_url = mock_req.call_args[0][0]
+        assert "/releases?per_page=100" in called_url
+
+    @patch("upkeep.github._request")
+    def test_tag_filter_no_match_is_not_found(self, mock_req):
+        body = json.dumps([{"tag_name": "photos-v1"}]).encode()
+        mock_req.return_value = (200, body, {})
+
+        with pytest.raises(GitHubError) as exc:
+            fetch_latest_release("owner/repo", tag_filter="^auth-v")
+
+        assert exc.value.kind == "not_found"
+
+    @patch("upkeep.github._request")
+    def test_invalid_tag_filter_fails_fast(self, mock_req):
+        with pytest.raises(GitHubError) as exc:
+            fetch_latest_release("owner/repo", tag_filter="[")
+        assert exc.value.kind == "invalid"
+        mock_req.assert_not_called()
+
+
+class TestSelectAsset:
+    def test_invalid_regex_raises_invalid_error(self):
+        assets = [{"name": "tool-x86_64.AppImage", "browser_download_url": "https://example.test/a"}]
+        with pytest.raises(GitHubError) as exc:
+            select_asset(assets, asset_filter="[")
+        assert exc.value.kind == "invalid"
 
 
 class TestRateLimit:

@@ -49,6 +49,12 @@ class AppDialog(Gtk.Dialog):
             self.repo_entry.set_text(app.get("repo", ""))
         box.pack_start(field("GitHub repo", self.repo_entry), False, False, 0)
 
+        self.tag_filter_entry = Gtk.Entry()
+        self.tag_filter_entry.set_placeholder_text("Regex for release tags (optional), e.g. ^auth-v")
+        if app and app.get("tag_filter"):
+            self.tag_filter_entry.set_text(app["tag_filter"])
+        box.pack_start(field("Tag filter", self.tag_filter_entry), False, False, 0)
+
         box.pack_start(section("Installation"), False, False, 0)
 
         self.install_dir_entry = Gtk.Entry()
@@ -150,18 +156,25 @@ class AppDialog(Gtk.Dialog):
         dlg.destroy()
 
     def test_repo(self):
-        repo = self.repo_entry.get_text().strip()
+        repo = github.normalize_repo(self.repo_entry.get_text().strip())
         if not repo:
             self.test_label.set_text("Enter a repository first.")
             return
         self.test_label.set_text("Checking...")
         arch = self._selected_arch()
+        tag_filter = self.tag_filter_entry.get_text().strip() or ""
         asset_filter = self.filter_entry.get_text().strip() or ""
         name = self.name_entry.get_text().strip() or ""
 
         def worker():
             try:
-                info = updater.latest_info(config.normalize_app({"name": name or "x", "repo": repo, "arch": arch, "asset_filter": asset_filter}))
+                info = updater.latest_info(config.normalize_app({
+                    "name": name or "x",
+                    "repo": repo,
+                    "arch": arch,
+                    "tag_filter": tag_filter,
+                    "asset_filter": asset_filter,
+                }))
                 text = f"Latest version: {info['tag']}\nSelected asset: {info['asset_name'] or 'NONE'} "
                 if not info["asset_name"]:
                     text += "(no AppImage file found with current filters)"
@@ -186,11 +199,7 @@ class AppDialog(Gtk.Dialog):
 
     def _save(self):
         name = self.name_entry.get_text().strip()
-        repo = self.repo_entry.get_text().strip()
-        if repo.startswith("http"):
-            parts = [p for p in repo.split("/") if p]
-            if len(parts) >= 2:
-                repo = parts[-2] + "/" + parts[-1]
+        repo = github.normalize_repo(self.repo_entry.get_text().strip())
         old_name = self.app.get("name") if self.app else None
         if old_name and name != old_name:
             existing = [a for a in self.cfg["apps"] if a["name"] == name and a["name"] != old_name]
@@ -201,6 +210,7 @@ class AppDialog(Gtk.Dialog):
             "repo": repo,
             "install_dir": self.install_dir_entry.get_text().strip() or None,
             "custom_path": self.custom_path_entry.get_text().strip() or None,
+            "tag_filter": self.tag_filter_entry.get_text().strip(),
             "asset_filter": self.filter_entry.get_text().strip(),
             "arch": self._selected_arch(),
             "auto_update": self.auto_check.get_active(),

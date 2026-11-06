@@ -7,6 +7,7 @@ from upkeep.config import (
     normalize_app,
     load_config,
     save_config,
+    get_tracker_file,
 )
 
 
@@ -72,6 +73,25 @@ class TestNormalizeApp:
         app = {"name": "App", "repo": "a/b", "create_desktop": False}
         result = normalize_app(app)
         assert result["create_desktop"] is False
+
+    def test_tag_filter_default(self):
+        app = {"name": "App", "repo": "a/b"}
+        result = normalize_app(app)
+        assert result["tag_filter"] == ""
+
+    def test_tag_filter_stripped(self):
+        app = {"name": "App", "repo": "a/b", "tag_filter": "  ^auth-v  "}
+        result = normalize_app(app)
+        assert result["tag_filter"] == "^auth-v"
+
+
+class TestTrackerFile:
+    def test_tracker_name_is_sanitized(self, tmp_path):
+        app = {"name": "../../My App"}
+        settings = {"tracker_dir": str(tmp_path)}
+        tracker = get_tracker_file(app, settings)
+        assert tracker.parent == tmp_path
+        assert tracker.name == "appimage_tracker_My-App.txt"
 
 
 class TestConfigRoundtrip:

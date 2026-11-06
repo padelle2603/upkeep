@@ -5,7 +5,10 @@
 
 import json
 import os
+import re
 from pathlib import Path
+
+from . import github
 
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "upkeep"
 CONFIG_FILE = CONFIG_DIR / "config.json"
@@ -29,12 +32,17 @@ def expand(path):
     return str(Path(path).expanduser())
 
 
+def _safe_name(name):
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", (name or "").strip()).strip("-.")
+
+
 def normalize_app(app):
     d = dict(app)
     d["name"] = (d.get("name") or "").strip()
-    d["repo"] = (d.get("repo") or "").strip().lstrip("@/")
+    d["repo"] = github.normalize_repo(d.get("repo"))
     d["install_dir"] = expand(d.get("install_dir") or None)
     d["custom_path"] = expand(d.get("custom_path") or None)
+    d["tag_filter"] = (d.get("tag_filter") or "").strip()
     d["asset_filter"] = (d.get("asset_filter") or "").strip()
     d["arch"] = d.get("arch") or DEFAULT_ARCH
     if d["arch"] not in ARCHS:
@@ -65,7 +73,8 @@ def save_config(config):
 
 def get_tracker_file(app, settings):
     tracker_dir = expand(settings.get("tracker_dir") or "~/.cache")
-    return Path(tracker_dir) / f"appimage_tracker_{app['name']}.txt"
+    safe_name = _safe_name(app.get("name"))
+    return Path(tracker_dir) / f"appimage_tracker_{safe_name}.txt"
 
 
 def read_local_version(app, settings):

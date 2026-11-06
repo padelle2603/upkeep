@@ -45,6 +45,52 @@ class TestErrorKind:
         assert result.state == "error"
         assert result.kind == "rate_limit"
 
+    def test_update_app_uses_prefetched_info(self):
+        app = {"name": "X", "repo": "o/r"}
+        info = {
+            "tag": "v2.0",
+            "asset_name": "X.AppImage",
+            "download_url": "https://example.test/X.AppImage",
+            "published_at": "",
+            "html_url": "",
+        }
+        with patch.object(updater, "latest_info", side_effect=AssertionError("latest_info should not be called")):
+            with patch.object(updater.config, "read_local_version", return_value="1.0"):
+                with patch.object(updater.config, "app_target_path", return_value="/tmp/X.AppImage"):
+                    with patch("upkeep.updater.os.path.exists", return_value=False):
+                        with patch.object(updater, "download") as mock_download:
+                            with patch.object(updater.config, "write_local_version"):
+                                with patch.object(updater, "write_desktop_entry"):
+                                    result = updater.update_app(app, {}, info=info)
+        assert result.state == "updated"
+        mock_download.assert_called_once_with("https://example.test/X.AppImage", "/tmp/X.AppImage", progress_cb=None)
+
+
+class TestLatestInfo:
+    def test_passes_tag_filter_to_github(self):
+        app = {
+            "name": "Auth",
+            "repo": "ente/ente",
+            "arch": "x86_64",
+            "tag_filter": "^auth-v",
+            "asset_filter": "",
+        }
+        release = {
+            "tag_name": "auth-v4",
+            "assets": [],
+            "published_at": "",
+            "html_url": "",
+        }
+        with patch.object(updater.github, "fetch_latest_release", return_value=release) as mock_fetch:
+            info = updater.latest_info(app)
+
+        assert info["tag"] == "auth-v4"
+        mock_fetch.assert_called_once_with(
+            "ente/ente",
+            timeout=updater.github.DEFAULT_TIMEOUT,
+            tag_filter="^auth-v",
+        )
+
 
 class TestSanitizeName:
     def test_normal_name(self):

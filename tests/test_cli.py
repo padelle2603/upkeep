@@ -38,3 +38,10 @@ class TestCmdAddDesktopFlag:
         )
         cmd_add(cfg_file, args)
         assert config.load_config()["apps"][0]["create_desktop"] is False
+
+    def test_tag_filter_is_saved(self, cfg_file):
+        args = build_parser().parse_args(
+            ["add", "--name", "Ente Auth", "--repo", "ente/ente", "--tag-filter", "^auth-v"]
+        )
+        assert cmd_add(cfg_file, args) == 0
+        assert cfg_file["apps"][0]["tag_filter"] == "^auth-v"

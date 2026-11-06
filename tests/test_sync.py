@@ -12,21 +12,21 @@ class TestSync(unittest.TestCase):
     @patch('upkeep.cli.cmd_update')
     def test_sync_all_apps(self, mock_update):
         args = type('', (), {})()  # Create a dummy object
-        args.names = []  # Simula nessun nome specificato
+        args.names = []  # Simulate no names provided
         cmd_sync(self.config, args)
         mock_update.assert_called_once_with(self.config, args, skip_confirm=True)
 
     @patch('upkeep.cli.cmd_update')
     def test_sync_specific_app(self, mock_update):
         args = type('', (), {})()  # Create a dummy object
-        args.names = ["app1"]  # Simula richiesta di sincronizzazione di 'app1'
+        args.names = ["app1"]  # Simulate syncing one app
         cmd_sync(self.config, args)
         mock_update.assert_called_once_with(self.config, args, skip_confirm=True)
 
     @patch('upkeep.cli.cmd_update')
     def test_sync_forwards_names(self, mock_update):
         args = type('', (), {})()  # Create a dummy object
-        args.names = ["unknown_app"]  # Simula richiesta di un'app sconosciuta
+        args.names = ["unknown_app"]  # Simulate requesting an unknown app
         cmd_sync(self.config, args)
         mock_update.assert_called_once_with(self.config, args, skip_confirm=True)
 

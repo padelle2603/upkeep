@@ -4,6 +4,7 @@
 # Licensed under the GNU GPL v3 or later; see LICENSE and NOTICE.
 
 import argparse
+import os
 import sys
 
 from . import config
@@ -32,7 +33,7 @@ def cmd_list(cfg, args):
     for a in apps:
         local = config.read_local_version(a, cfg["settings"]) or "-"
         target = config.app_target_path(a)
-        exists = __import__("os").path.exists(target)
+        exists = os.path.exists(target)
         installed = term.green("yes") if exists else term.red("no")
         rows.append((a["name"], a["repo"], a.get("arch") or "x86_64", local, target, installed))
     term.print_table(rows, ["Name", "Repo", "Arch", "Local", "Path", "Installed"])
@@ -58,7 +59,9 @@ def cmd_check(cfg, args):
             term.show_status(f"Checking for updates... [{i}/{total}] {a['name']}")
             r = updater.check_app(a, cfg["settings"])
             remote = (r.info or {}).get("tag") if r.info else None
-            name = term.state_color(r.state)(STATE_ICON[r.state] + " " + a["name"])
+            icon = STATE_ICON.get(r.state, "")
+            label = f"{icon} {a['name']}".strip()
+            name = term.state_color(r.state)(label)
             if r.state == "error":
                 errors += 1
                 rows.append((name, a["repo"], term.red(r.message or "error")))
@@ -189,15 +192,13 @@ def cmd_add(cfg, args):
     if not args.repo:
         print("Specify --repo (owner/repo format)", file=sys.stderr)
         return 1
-    if args.repo.startswith("http"):
-        parts = [p for p in args.repo.split("/") if p]
-        if len(parts) >= 2:
-            args.repo = parts[-2] + "/" + parts[-1]
+    args.repo = github.normalize_repo(args.repo)
     app = config.normalize_app({
         "name": name,
         "repo": args.repo,
         "install_dir": config.expand(args.dir) if args.dir else None,
         "custom_path": config.expand(args.path) if args.path else None,
+        "tag_filter": args.tag_filter or "",
         "asset_filter": args.filter or "",
         "arch": args.arch or cfg["settings"].get("default_arch") or "x86_64",
         "auto_update": args.auto,
@@ -242,7 +243,8 @@ def cmd_show(cfg, args):
             print(kv("Name:", a["name"], term.bold))
             print(kv("Repo:", a["repo"], term.bold))
             print(kv("Arch:", a.get("arch")))
-            print(kv("Filter:", a.get("asset_filter") or "-"))
+            print(kv("Tag filter:", a.get("tag_filter") or "-"))
+            print(kv("Asset filter:", a.get("asset_filter") or "-"))
             print(kv("Install dir:", a.get("install_dir") or "(default)"))
             print(kv("Custom path:", a.get("custom_path") or "-"))
             print(kv("Path:", target))
@@ -286,6 +288,7 @@ def build_parser():
     c.add_argument("--repo", required=True)
     c.add_argument("--dir", help="Installation folder")
     c.add_argument("--path", help="Custom AppImage file path")
+    c.add_argument("--tag-filter", help="Regex to select the release tag (for multi-app repositories)")
     c.add_argument("--filter", help="Regex to select the asset")
     c.add_argument("--arch", choices=config.ARCHS)
     c.add_argument("--auto", action="store_true", help="Update without asking for confirmation")

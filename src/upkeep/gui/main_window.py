@@ -744,56 +744,72 @@ class MainWindow(Gtk.ApplicationWindow):
 
         def worker():
             outdated = []
-            for row in rows:
+            stopped = ""
+            for i, row in enumerate(rows):
                 try:
                     r = updater.check_app(row.app, self.cfg["settings"])
                     if r.state in ("outdated", "missing"):
                         outdated.append((row, r.info, r.state == "missing"))
                     else:
                         GLib.idle_add(self.on_row_done, row, r.state, r.info, r.message)
+                    if r.kind == "rate_limit":
+                        stopped = r.message
+                        for pending in rows[i + 1:]:
+                            GLib.idle_add(self.on_row_done, pending, "error", None, stopped)
+                        break
                 except Exception as e:
                     GLib.idle_add(self.on_row_done, row, "error", None, _describe_exception(e))
-            GLib.idle_add(self._confirm_download, outdated)
+            GLib.idle_add(self._confirm_download, outdated, stopped)
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _confirm_download(self, outdated):
+    def _confirm_download(self, outdated, stopped=""):
         if not outdated:
-            self.on_updates_done("No updates available")
+            if stopped:
+                self.on_updates_done("Update stopped: " + stopped)
+            else:
+                self.on_updates_done("No updates available")
             return False
         confirm_all = bool(self.cfg["settings"].get("confirm_download", True))
         confirmed = []
         for row, info, missing in outdated:
             if row.app.get("auto_update") or not confirm_all:
-                confirmed.append(row)
+                confirmed.append((row, info))
                 continue
             if self._ask_confirm(row.app, info, missing):
-                confirmed.append(row)
+                confirmed.append((row, info))
             else:
-                GLib.idle_add(self.on_row_done, row, "skipped", None)
+                GLib.idle_add(self.on_row_done, row, "skipped", info)
         if not confirmed:
             self.on_updates_done("Update cancelled")
             return False
-        self._download_worker(confirmed)
+        self._download_worker(confirmed, stopped=stopped)
         return False
 
-    def _download_worker(self, rows):
+    def _download_worker(self, rows, stopped=""):
         total = len(rows)
         progress = [0]
 
         def worker():
-            for row in rows:
+            for row, info in rows:
                 def progress_cb(done_bytes, total_bytes, row=row):
                     frac = (progress[0] + (done_bytes / total_bytes if total_bytes else 0)) / total
                     GLib.idle_add(self.set_progress_frac, frac, f"Downloading: {row.app['name']}")
                 try:
-                    r = updater.update_app(row.app, self.cfg["settings"], progress_cb=progress_cb, confirm_fn=None)
+                    r = updater.update_app(
+                        row.app,
+                        self.cfg["settings"],
+                        progress_cb=progress_cb,
+                        confirm_fn=None,
+                        info=info,
+                    )
                     state, info, message = r.state, r.info, r.message
                 except Exception as e:
                     state, info, message = "error", None, _describe_exception(e)
                 progress[0] += 1
                 GLib.idle_add(self.on_row_done, row, state, info, message)
-            GLib.idle_add(self.on_updates_done)
+            done_message = "Updates complete" if not stopped else "Updates partially completed: " + stopped
+            GLib.idle_add(self.on_updates_done, done_message)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -945,8 +961,9 @@ class UpdaterApplication(Gtk.Application):
     def _check_self(self):
         """One anonymous HEAD request, off the UI thread, silent on failure."""
         version = selfupdate.available_version(__version__)
-        if version:
-            GLib.idle_add(self.win.show_update, version)
+        win = self.win
+        if version and win is not None:
+            GLib.idle_add(win.show_update, version)
 
 
 def run():

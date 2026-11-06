@@ -14,10 +14,11 @@ import urllib.error
 
 from pathlib import Path
 
+from . import __version__
 from . import config
 from . import github
 
-USER_AGENT = f"upkeep/{__import__('upkeep').__version__}"
+USER_AGENT = f"upkeep/{__version__}"
 
 DESKTOP_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "applications"
 ICON_STORE_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "upkeep" / "icons"
@@ -233,7 +234,11 @@ def set_cli_command(enabled):
 
 
 def latest_info(app, timeout=github.DEFAULT_TIMEOUT):
-    release = github.fetch_latest_release(app["repo"], timeout=timeout)
+    release = github.fetch_latest_release(
+        app["repo"],
+        timeout=timeout,
+        tag_filter=app.get("tag_filter") or "",
+    )
     tag = release.get("tag_name")
     if not tag:
         raise github.GitHubError(f"No version found for {app['repo']}", kind="not_found")
@@ -311,12 +316,13 @@ def download(url, dest, progress_cb=None):
         raise github.GitHubError(f"Error during download: {e}", kind="download")
 
 
-def update_app(app, settings, timeout=github.DEFAULT_TIMEOUT, progress_cb=None, confirm_fn=None):
+def update_app(app, settings, timeout=github.DEFAULT_TIMEOUT, progress_cb=None, confirm_fn=None, info=None):
     local = config.read_local_version(app, settings)
-    try:
-        info = latest_info(app, timeout=timeout)
-    except github.GitHubError as e:
-        return UpdateResult(app, "error", str(e), local, kind=e.kind)
+    if info is None:
+        try:
+            info = latest_info(app, timeout=timeout)
+        except github.GitHubError as e:
+            return UpdateResult(app, "error", str(e), local, kind=e.kind)
     target = config.app_target_path(app)
     missing = not os.path.exists(target)
     if not missing and local and not github.newer_than(local, info["tag"]):
