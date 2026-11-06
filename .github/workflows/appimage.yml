@@ -79,6 +79,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Create the release if it does not exist yet (--verify-existing is a
+          # no-op when it does, so a re-run never double-publishes).
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-existing
           gh release upload "$GITHUB_REF_NAME" \
             Upkeep-*-x86_64.AppImage \
             --clobber
