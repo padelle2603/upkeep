@@ -89,6 +89,7 @@ class TestLatestInfo:
             "ente/ente",
             timeout=updater.github.DEFAULT_TIMEOUT,
             tag_filter="^auth-v",
+            prerelease=False,
         )
 
 

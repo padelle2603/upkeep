@@ -99,6 +99,11 @@ class AppDialog(Gtk.Dialog):
 
         box.pack_start(section("Options"), False, False, 0)
 
+        row, self.prerelease_check = switch_row(
+            "Include pre-releases", bool(app and app.get("prerelease"))
+        )
+        box.pack_start(row, False, False, 0)
+
         row, self.auto_check = switch_row(
             "Update without asking", bool(app and app.get("auto_update"))
         )
@@ -164,6 +169,7 @@ class AppDialog(Gtk.Dialog):
         arch = self._selected_arch()
         tag_filter = self.tag_filter_entry.get_text().strip() or ""
         asset_filter = self.filter_entry.get_text().strip() or ""
+        prerelease = self.prerelease_check.get_active()
         name = self.name_entry.get_text().strip() or ""
 
         def worker():
@@ -174,6 +180,7 @@ class AppDialog(Gtk.Dialog):
                     "arch": arch,
                     "tag_filter": tag_filter,
                     "asset_filter": asset_filter,
+                    "prerelease": prerelease,
                 }))
                 text = f"Latest version: {info['tag']}\nSelected asset: {info['asset_name'] or 'NONE'} "
                 if not info["asset_name"]:
@@ -213,6 +220,7 @@ class AppDialog(Gtk.Dialog):
             "tag_filter": self.tag_filter_entry.get_text().strip(),
             "asset_filter": self.filter_entry.get_text().strip(),
             "arch": self._selected_arch(),
+            "prerelease": self.prerelease_check.get_active(),
             "auto_update": self.auto_check.get_active(),
             "enabled": self.enabled_check.get_active(),
             "create_desktop": self.desktop_check.get_active(),

@@ -200,6 +200,7 @@ def cmd_add(cfg, args):
         "custom_path": config.expand(args.path) if args.path else None,
         "tag_filter": args.tag_filter or "",
         "asset_filter": args.filter or "",
+        "prerelease": args.prerelease,
         "arch": args.arch or cfg["settings"].get("default_arch") or "x86_64",
         "auto_update": args.auto,
         "enabled": True,
@@ -245,6 +246,7 @@ def cmd_show(cfg, args):
             print(kv("Arch:", a.get("arch")))
             print(kv("Tag filter:", a.get("tag_filter") or "-"))
             print(kv("Asset filter:", a.get("asset_filter") or "-"))
+            print(kv("Pre-release:", "yes" if a.get("prerelease") else "no"))
             print(kv("Install dir:", a.get("install_dir") or "(default)"))
             print(kv("Custom path:", a.get("custom_path") or "-"))
             print(kv("Path:", target))
@@ -290,6 +292,7 @@ def build_parser():
     c.add_argument("--path", help="Custom AppImage file path")
     c.add_argument("--tag-filter", help="Regex to select the release tag (for multi-app repositories)")
     c.add_argument("--filter", help="Regex to select the asset")
+    c.add_argument("--prerelease", action="store_true", help="Include pre-releases")
     c.add_argument("--arch", choices=config.ARCHS)
     c.add_argument("--auto", action="store_true", help="Update without asking for confirmation")
     c.add_argument("--no-desktop", action="store_true", help="Do not create a .desktop entry for this app")

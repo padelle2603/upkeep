@@ -87,6 +87,32 @@ class TestFetchLatestRelease:
         assert exc.value.kind == "invalid"
         mock_req.assert_not_called()
 
+    @patch("upkeep.github._request")
+    def test_prerelease_uses_releases_endpoint_and_skips_drafts(self, mock_req):
+        body = json.dumps([
+            {"tag_name": "v1.1.0-draft", "draft": True, "prerelease": True},
+            {"tag_name": "v1.0.0-beta.1", "draft": False, "prerelease": True},
+            {"tag_name": "v0.9.0", "draft": False, "prerelease": False},
+        ]).encode()
+        mock_req.return_value = (200, body, {})
+
+        release = fetch_latest_release("owner/repo", prerelease=True)
+
+        assert release["tag_name"] == "v1.0.0-beta.1"
+        called_url = mock_req.call_args[0][0]
+        assert "/releases?per_page=100" in called_url
+
+    @patch("upkeep.github._request")
+    def test_tag_filter_ignores_prerelease_by_default(self, mock_req):
+        body = json.dumps([
+            {"tag_name": "v1.0.0-beta.1", "draft": False, "prerelease": True},
+            {"tag_name": "v0.9.0", "draft": False, "prerelease": False},
+        ]).encode()
+        mock_req.return_value = (200, body, {})
+
+        release = fetch_latest_release("owner/repo", tag_filter="^v", prerelease=False)
+        assert release["tag_name"] == "v0.9.0"
+
 
 class TestSelectAsset:
     def test_invalid_regex_raises_invalid_error(self):

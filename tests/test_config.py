@@ -84,6 +84,16 @@ class TestNormalizeApp:
         result = normalize_app(app)
         assert result["tag_filter"] == "^auth-v"
 
+    def test_prerelease_default(self):
+        app = {"name": "App", "repo": "a/b"}
+        result = normalize_app(app)
+        assert result["prerelease"] is False
+
+    def test_prerelease_preserved(self):
+        app = {"name": "App", "repo": "a/b", "prerelease": True}
+        result = normalize_app(app)
+        assert result["prerelease"] is True
+
 
 class TestTrackerFile:
     def test_tracker_name_is_sanitized(self, tmp_path):

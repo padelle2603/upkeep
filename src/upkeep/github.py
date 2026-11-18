@@ -80,7 +80,7 @@ def _raise_release_error(status, headers, repo):
     raise GitHubError(f"GitHub responded with HTTP {status} for {repo}", kind="http")
 
 
-def fetch_latest_release(repo, timeout=DEFAULT_TIMEOUT, tag_filter=""):
+def fetch_latest_release(repo, timeout=DEFAULT_TIMEOUT, tag_filter="", prerelease=False):
     repo = normalize_repo(repo)
     if "/" not in repo:
         raise GitHubError(f"Invalid repo: {repo!r} (expected 'owner/repo')", kind="invalid")
@@ -93,27 +93,36 @@ def fetch_latest_release(repo, timeout=DEFAULT_TIMEOUT, tag_filter=""):
         except re.error as e:
             raise GitHubError(f"Invalid tag filter regex: {e}", kind="invalid")
 
-    url = API_RELEASES.format(repo=repo) if pattern else API_LATEST.format(repo=repo)
+    use_releases_list = bool(pattern or prerelease)
+    url = API_RELEASES.format(repo=repo) if use_releases_list else API_LATEST.format(repo=repo)
     status, body, headers = _request(url, timeout=timeout)
     if status != 200:
         _raise_release_error(status, headers, repo)
 
     data = _decode_json_or_raise(body, repo)
-    if not pattern:
+    if not use_releases_list:
         return data
 
     if not isinstance(data, list):
         raise GitHubError(f"Invalid releases response from GitHub for {repo}", kind="invalid")
 
     for release in data:
+        if release.get("draft"):
+            continue
+        if not prerelease and release.get("prerelease"):
+            continue
         tag = (release.get("tag_name") or "").strip()
-        if tag and pattern.search(tag):
+        if pattern:
+            if tag and pattern.search(tag):
+                return release
+        elif tag:
             return release
 
-    raise GitHubError(
-        f"No release tag matching {tag_filter!r} found for {repo}.",
-        kind="not_found",
-    )
+    if pattern:
+        msg = f"No release tag matching {tag_filter!r} found for {repo}."
+    else:
+        msg = f"No release found for {repo}."
+    raise GitHubError(msg, kind="not_found")
 
 
 def strip_v(version):

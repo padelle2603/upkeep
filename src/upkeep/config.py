@@ -44,6 +44,7 @@ def normalize_app(app):
     d["custom_path"] = expand(d.get("custom_path") or None)
     d["tag_filter"] = (d.get("tag_filter") or "").strip()
     d["asset_filter"] = (d.get("asset_filter") or "").strip()
+    d["prerelease"] = bool(d.get("prerelease", False))
     d["arch"] = d.get("arch") or DEFAULT_ARCH
     if d["arch"] not in ARCHS:
         d["arch"] = DEFAULT_ARCH

@@ -4,4 +4,4 @@
 # Licensed under the GNU GPL v3 or later; see LICENSE and NOTICE.
 
 __all__ = ["config", "github", "updater"]
-__version__ = "1.2.0"
+__version__ = "1.3.0"

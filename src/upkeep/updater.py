@@ -238,6 +238,7 @@ def latest_info(app, timeout=github.DEFAULT_TIMEOUT):
         app["repo"],
         timeout=timeout,
         tag_filter=app.get("tag_filter") or "",
+        prerelease=bool(app.get("prerelease", False)),
     )
     tag = release.get("tag_name")
     if not tag:
